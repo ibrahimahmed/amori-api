@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+bun.lockb
+package-lock.json
+yarn.lock
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Environment files
+.env
+.env.local
+.env.production
+.env.staging
+
+# Database
+*.sql
+better-auth_migrations/
+
+# Logs
+*.log
+logs/
+
+# Coverage reports
+coverage/
+.nyc_output/
+
+# Cache
+.cache/
+.parcel-cache/
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+docker-compose*.yml
+
+# Terraform
+*.tf
+*.tfvars
+terraform.tfstate*
+.terraform/
+
+# Git
+.git/
+.gitignore
+
+# Documentation build
+docs/build/
+
+# Generated files
+*.generated.*
+schema.prisma
+
+# Config files that should maintain their format
+biome.json
+tsconfig.json 
