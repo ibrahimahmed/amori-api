@@ -1,28 +1,35 @@
-// src/db/client.ts
-import "dotenv/config";
-import { env } from "../../config/env";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
-import type { Schema } from "./schema";
+import { env } from "../../config/env";
+import type { Database } from "./schema";
 
-if (!env.DATABASE_URL) {
-  throw new Error("DATABASE_URL must be set in your environment");
-}
+const pool = new Pool({
+  connectionString: env.DATABASE_URL,
+});
 
-const pool = new Pool({ connectionString: env.DATABASE_URL });
-export const db = new Kysely<Schema>({
+export const db = new Kysely<Database>({
   dialect: new PostgresDialect({ pool }),
 });
 
-export const checkDatabaseHealth = async () => {
+/**
+ * Check database connectivity
+ */
+export async function checkDatabaseHealth(): Promise<{ healthy: boolean; latency?: number; error?: string }> {
+  const start = Date.now();
   try {
-    await db.selectFrom("user").select("id").limit(1).execute();
-    return { healthy: true, latency: 0 };
+    await db.selectFrom("users").select("id").limit(1).execute();
+    return { healthy: true, latency: Date.now() - start };
   } catch (e) {
-    return { healthy: false, error: e };
+    return {
+      healthy: false,
+      error: e instanceof Error ? e.message : "Unknown error",
+    };
   }
-};
+}
 
-export const closeDatabaseConnection = async () => {
+/**
+ * Close database connection pool
+ */
+export async function closeDatabaseConnection(): Promise<void> {
   await pool.end();
-};
+}

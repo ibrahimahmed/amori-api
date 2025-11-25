@@ -1,134 +1,50 @@
 version: '3.8'
 
-x-etera-prefix: &etera_prefix 'etera'
-
 services:
-  # PostgreSQL database
+  # PostgreSQL database (for local development)
   postgres:
     image: postgres:15-alpine
-    container_name: ${ETERA_PREFIX:-etera}-postgres
+    container_name: amori-postgres
     restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: ${ETERA_PREFIX:-etera}
+      POSTGRES_USER: amori
       POSTGRES_PASSWORD: secret
-      POSTGRES_DB: ${ETERA_PREFIX:-etera}db
-      POSTGRES_PORT: 5432
+      POSTGRES_DB: amori
     volumes:
-      - etera-pgdata:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+      - amori-pgdata:/var/lib/postgresql/data
+      - ./src/db/schema.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${ETERA_PREFIX:-etera} -d ${ETERA_PREFIX:-etera}db"]
+      test: ["CMD-SHELL", "pg_isready -U amori -d amori"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - etera-network
+      - amori-network
 
   # Redis cache
   redis:
     image: redis:7-alpine
-    container_name: ${ETERA_PREFIX:-etera}-redis
+    container_name: amori-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
-      - etera-redis-data:/data
-    command: redis-server --appendonly yes --requirepass redis_secret
+      - amori-redis-data:/data
+    command: redis-server --appendonly yes
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "redis_secret", "ping"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - etera-network
-
-  # Migration service
-  migration:
-    build:
-      context: .
-      dockerfile: Dockerfile.migrate
-    command: 'sleep 3600'
-    environment:
-      NODE_ENV: production
-      DATABASE_URL: postgres://${ETERA_PREFIX:-etera}:secret@postgres:5432/${ETERA_PREFIX:-etera}db
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - etera-network
-
-  # Zookeeper (required for Kafka)
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.4.0
-    container_name: etera-zookeeper
-    restart: unless-stopped
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    healthcheck:
-      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - etera-network
-
-  # Kafka
-  kafka:
-    image: confluentinc/cp-kafka:7.4.0
-    container_name: etera-kafka
-    restart: unless-stopped
-    ports:
-      - "9092:9092"
-      - "9101:9101"
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_JMX_PORT: 9101
-      KAFKA_JMX_HOSTNAME: localhost
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
-    depends_on:
-      zookeeper:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    networks:
-      - etera-network
-
-  # Kafka UI (optional - for monitoring)
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: etera-kafka-ui
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-    environment:
-      KAFKA_CLUSTERS_0_NAME: local
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
-      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
-    depends_on:
-      kafka:
-        condition: service_healthy
-    networks:
-      - etera-network
+      - amori-network
 
 volumes:
-  etera-pgdata:
-  etera-redis-data:
-  etera-kafka-data:  # <--- this is crucial
+  amori-pgdata:
+  amori-redis-data:
 
 networks:
-  etera-network:
+  amori-network:
     driver: bridge

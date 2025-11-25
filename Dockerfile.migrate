@@ -1,3 +1,0 @@
-# Dockerfile.migrate
-FROM oven/bun:1-alpine
-CMD ["sleep", "3600"]

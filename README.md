@@ -1,159 +1,208 @@
-# Bun + ElysiaJS Microservice Template
+# Amori API
 
-A modern, production-ready template for building scalable microservices with [Bun](https://bun.sh/) and [ElysiaJS](https://elysiajs.com/). This template is designed for rapid development, easy onboarding, and long-term maintainability.
+A production-ready backend API for **Amori** - a relationship and memory management app.
 
----
+Built with **Bun**, **Elysia.js**, **Kysely**, **Supabase**, **Redis**, and **OpenAI**.
 
-## 🚀 Quickstart (TL;DR)
+## Features
 
-```sh
-# 1. Clone this repo
-npx degit etera-ai/bun-elysia-template my-microservice
-cd my-microservice
+- **Authentication**: Supabase Auth integration (Email, Google, Apple)
+- **People Management**: Track relationships with birthdays, anniversaries, and notes
+- **Memories**: Store and organize memories with media uploads via Supabase Storage
+- **Wishlist**: Manage gift ideas for people you care about
+- **Planner**: Plan events, dates, and set reminders
+- **AI-Powered**: Gift suggestions, relationship advice, and personalized messages via OpenAI
+
+## Quick Start
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/your-org/amori-api.git
+cd amori-api
 
 # 2. Install dependencies
 bun install
 
-# 3. Generate your .env file
-bun run scripts/setup-env.js
+# 3. Set up environment variables
+cp .env.example .env
+# Edit .env with your credentials
 
-# 4. Start all services (Postgres, Redis, Kafka, etc.)
-./scripts/dev.sh
+# 4. Start local services (PostgreSQL & Redis)
+docker-compose up -d
 
-# 5. Start the dev server (hot reload)
+# 5. Run database migrations
+# Execute src/db/schema.sql in your PostgreSQL database
+
+# 6. Start the development server
 bun run dev
 ```
 
-- API: [http://localhost:3000](http://localhost:3000)
-- Swagger Docs: [http://localhost:3000/swagger](http://localhost:3000/swagger)
-- Health: [http://localhost:3000/health](http://localhost:3000/health)
+## API Endpoints
 
----
+| Endpoint | Description |
+|----------|-------------|
+| `GET /` | Welcome message and API info |
+| `GET /health` | Health check with service status |
+| `GET /swagger` | API documentation |
+| **Auth** | |
+| `GET /auth/me` | Get current user profile |
+| `PATCH /auth/me` | Update user profile |
+| `DELETE /auth/me` | Delete account |
+| **People** | |
+| `GET /people` | List all relationships |
+| `POST /people` | Add a new person |
+| `GET /people/:id` | Get person details |
+| `PATCH /people/:id` | Update person |
+| `DELETE /people/:id` | Delete person |
+| `GET /people/birthdays` | Upcoming birthdays |
+| `GET /people/anniversaries` | Upcoming anniversaries |
+| **Memories** | |
+| `GET /memories` | List memories |
+| `POST /memories` | Create memory |
+| `GET /memories/:id` | Get memory |
+| `PATCH /memories/:id` | Update memory |
+| `DELETE /memories/:id` | Delete memory |
+| `POST /memories/:id/media` | Upload media |
+| `POST /memories/:id/favorite` | Toggle favorite |
+| **Wishlist** | |
+| `GET /wishlist` | List wishlist items |
+| `POST /wishlist` | Add item |
+| `PATCH /wishlist/:id` | Update item |
+| `DELETE /wishlist/:id` | Delete item |
+| `POST /wishlist/:id/purchase` | Mark purchased |
+| **Planner** | |
+| `GET /planner` | List events |
+| `POST /planner` | Create event |
+| `GET /planner/upcoming` | Upcoming events |
+| `GET /planner/calendar/:year/:month` | Calendar view |
+| `POST /planner/:id/complete` | Mark completed |
+| **AI** | |
+| `POST /ai/gifts` | Get gift suggestions |
+| `POST /ai/advice` | Get relationship advice |
+| `POST /ai/memory-prompts` | Get memory prompts |
+| `POST /ai/activities` | Get activity ideas |
+| `POST /ai/message` | Generate message |
 
-## 🏗️ Architecture & Folder Structure
+## Environment Variables
+
+```env
+# Server
+PORT=3000
+NODE_ENV=development
+
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5432/amori
+
+# Redis
+REDIS_URL=redis://localhost:6379
+
+# Supabase
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+
+# OpenAI
+OPENAI_API_KEY=sk-your-api-key
+
+# Optional
+RESEND_API_KEY=re_your_resend_key
+```
+
+## Project Structure
 
 ```
 src/
-  modules/         # Feature modules (each feature = 1 folder)
-    example/         # Example feature (copy this for new features)
-    health/          # Health check endpoints
-  libs/            # Shared libraries (db, cache, email, sms, kafka, logger, etc.)
-  middlewares/     # ElysiaJS middlewares (auth, error, metrics, etc.)
-  config/          # App configuration
-  utils/           # Utilities/helpers
-  index.ts         # App entry point
-scripts/           # Dev & setup scripts
-.env.example       # Example env vars
-README.md          # This file
+├── config/         # Environment configuration
+├── db/             # Database schema SQL
+├── libs/           # Shared libraries
+│   ├── cache/      # Redis client
+│   ├── db/         # Kysely database client & schema
+│   ├── openai/     # OpenAI integration
+│   └── supabase/   # Supabase client
+├── middlewares/    # Elysia middlewares
+├── modules/        # Feature modules
+│   ├── ai/         # AI-powered features
+│   ├── auth/       # Authentication
+│   ├── health/     # Health checks
+│   ├── memories/   # Memory management
+│   ├── people/     # Relationship management
+│   ├── planner/    # Event planning
+│   └── wishlist/   # Gift wishlist
+└── index.ts        # Application entry
 ```
 
-**Key Principles:**
-- Each feature = its own module (service, controller, routes, types, index)
-- All shared logic goes in `/libs` (never duplicate code)
-- Middlewares are reusable and composable
-- Configuration is centralized in `/config`
+## Development
 
----
+```bash
+# Run development server with hot reload
+bun run dev
 
-## 🔐 Environment & Secrets
+# Run tests
+bun test
 
-- Copy `.env.example` to `.env` and fill in values, or run `bun run scripts/setup-env.js` to generate one.
-- **Never commit secrets to git!**
-- Required variables:
-  - `PORT`, `NODE_ENV`, `DATABASE_URL`, `REDIS_URL`, `KAFKA_BROKERS`, `KAFKA_CLIENT_ID`
-  - Optional: `RESEND_API_KEY`, `TWILIO_*`, `GOOGLE_CLIENT_ID`, etc.
+# Type check
+bun run typecheck
 
----
+# Format code
+bun run format
+```
 
-## 📋 Standard Operating Procedures (SOPs)
+## Deployment
 
-### 1. Adding a New Feature Module
-1. Copy `src/modules/example/` to `src/modules/your-feature/`
-2. Rename files and update logic for your feature
-3. Export your routes in `src/modules/your-feature/index.ts`
-4. Register your routes in `src/index.ts`:
-   ```ts
-   import { yourFeatureRoutes } from './modules/your-feature';
-   app.use(yourFeatureRoutes);
-   ```
+### Railway
 
-### 2. Using Shared Libraries
-- Import from `/libs` for DB, cache, email, SMS, Kafka, logger, etc.
-- Example:
-  ```ts
-  import { db } from '@/libs/db/client';
-  import { redis } from '@/libs/cache';
-  import { sendEmail } from '@/libs/email';
-  import { kafka } from '@/libs/kafka';
-  import { logger } from '@/libs/logger';
-  ```
-- **Never duplicate logic**—extend or add to `/libs` if you need new shared functionality.
+1. Connect your GitHub repository to Railway
+2. Add environment variables in Railway dashboard
+3. Deploy! Railway will auto-detect the Dockerfile
 
-### 3. Middleware Usage
-- Place custom middlewares in `/middlewares`
-- Use `.use()` to add them to the app or to specific routes
-- Example: `app.use(authContext)`
+Or use the GitHub Action:
 
-### 4. Configuration Management
-- All config lives in `/config` (e.g., `env.ts`)
-- Use Zod for schema validation
-- Never hardcode secrets or env vars in code
+1. Add `RAILWAY_TOKEN` to your repository secrets
+2. Push to `main` branch to trigger deployment
 
-### 5. Testing
-- Place tests in `/tests` (mirroring your module structure)
-- Use `bun test` to run all tests
-- Example test: `tests/routes/health.test.ts`
+### Docker
 
-### 6. Deployment
-- Use Docker Compose for local dev (`./scripts/dev.sh`)
-- Use the provided `Dockerfile` for production builds
-- Health checks and metrics are built-in for easy ops integration
+```bash
+# Build image
+docker build -t amori-api .
 
----
+# Run container
+docker run -p 3000:3000 --env-file .env amori-api
+```
 
-## 🧑‍💻 Example: Add a New Module
+## Database Migrations
 
-1. **Copy the example module:**
-   ```sh
-   cp -r src/modules/example src/modules/user
-   ```
-2. **Rename files and update logic:**
-   - `example.service.ts` → `user.service.ts`
-   - `example.controller.ts` → `user.controller.ts`
-   - `example.routes.ts` → `user.routes.ts`
-   - Update all class and function names
-3. **Export your routes in `src/modules/user/index.ts`:**
-   ```ts
-   export { userRoutes } from './user.routes';
-   ```
-4. **Register your module in `src/index.ts`:**
-   ```ts
-   import { userRoutes } from './modules/user';
-   app.use(userRoutes);
-   ```
-5. **Add tests in `tests/routes/user.test.ts`**
+The project uses a migration system to manage database schema changes.
 
----
+### Running Migrations
 
-## 💡 Best Practices
-- Keep controllers and routes thin—put business logic in services
-- Use TypeScript types everywhere
-- Use the naming utility in `/libs/kafka/naming.ts` for all Kafka topics/groups
-- Use the logger for all logs (not `console.log`)
-- Add new shared logic to `/libs` for reusability
-- Write tests for every new module
-- Document your endpoints with Swagger (see example routes)
+```bash
+# Run all pending migrations
+bun run migrate
+```
 
----
+### Migration Files
 
-## 🛠️ Troubleshooting & FAQ
-- **Kafka stuck in a loop?** See the `docker-compose.yml` comments for correct env vars
-- **.env not working?** Regenerate with `bun run scripts/setup-env.js`
-- **Database connection errors?** Check your `DATABASE_URL` and that Postgres is running
-- **Need to reset everything?** Run `docker-compose down -v` to clear all volumes
+Migration files are located in `scripts/migrations/` and are applied in alphabetical order.
 
----
+```
+scripts/migrations/
+├── 001-intialize.sql    # Initial schema (users, people, memories, etc.)
+└── 002-*.sql            # Add more migrations as needed
+```
 
-## 🙏 Credits & License
-- Inspired by the best of Bun, ElysiaJS, and modern microservice practices
-- MIT License — Use, fork, and contribute! 
+### Creating a New Migration
+
+1. Create a new `.sql` file in `scripts/migrations/`
+2. Name it with a number prefix for ordering (e.g., `002-add-feature.sql`)
+3. Run `bun run migrate` to apply it
+
+The system tracks applied migrations in a `_migrations` table to prevent re-running.
+
+### CI/CD
+
+Migrations run automatically before deployment in the GitHub Actions workflow.
+
+## License
+
+MIT

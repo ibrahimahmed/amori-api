@@ -1,17 +1,22 @@
+import { Generated, ColumnType } from "kysely";
+
 export interface User {
-    id: string;
-    email: string;
-    password: string | null;
-    phoneNumber: string | null;
-    phoneNumberVerified?: boolean;
-    emailVerified?: boolean;
-    image?: string | null;
-    name?: string | null;
-    createdAt?: Date;
-    updatedAt?: Date;
-    firstName?: string | null;
-    lastName?: string | null;
-    isOnboarded?: boolean;
-    onboardingComplete?: boolean;
-    language?: string | null;
-  }
+  id: string; // UUID from Supabase Auth
+  email: string;
+  name: string | null;
+  avatar_url: string | null;
+  created_at: ColumnType<Date, string | undefined, never>;
+  updated_at: ColumnType<Date, string | undefined, string | undefined>;
+}
+
+export interface UserInsert {
+  id: string;
+  email: string;
+  name?: string | null;
+  avatar_url?: string | null;
+}
+
+export interface UserUpdate {
+  name?: string | null;
+  avatar_url?: string | null;
+}

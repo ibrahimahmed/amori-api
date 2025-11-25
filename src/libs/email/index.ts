@@ -6,18 +6,39 @@ export interface EmailOptions {
   subject: string;
   html?: string;
   text?: string;
+  from?: string;
 }
 
-const resend = new Resend(env.RESEND_API_KEY);
+// Initialize Resend client only if API key is available
+const resend = env.RESEND_API_KEY ? new Resend(env.RESEND_API_KEY) : null;
 
+/**
+ * Send an email using Resend
+ * @throws Error if RESEND_API_KEY is not configured
+ */
 export async function sendEmail(options: EmailOptions): Promise<boolean> {
-  if (!env.RESEND_API_KEY) throw new Error("RESEND_API_KEY is not set in env");
-  const payload: any = {
+  if (!resend || !env.RESEND_API_KEY) {
+    throw new Error("RESEND_API_KEY is not configured. Email sending is disabled.");
+  }
+
+  const { data, error } = await resend.emails.send({
+    from: options.from || "Amori <noreply@amori.app>",
     to: options.to,
     subject: options.subject,
-    text: options.text ?? "",
-  };
-  if (options.html) payload.html = options.html;
-  await resend.emails.send(payload);
+    text: options.text || "",
+    html: options.html,
+  });
+
+  if (error) {
+    throw new Error(`Failed to send email: ${error.message}`);
+  }
+
   return true;
+}
+
+/**
+ * Check if email sending is available
+ */
+export function isEmailEnabled(): boolean {
+  return !!env.RESEND_API_KEY;
 }
