@@ -1,0 +1,345 @@
+{
+  "info": {
+    "name": "Amori Auth API",
+    "_postman_id": "amori-auth-collection-v1",
+    "description": "Complete authentication endpoints for Amori API including email, Google, and Apple sign-in",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Sign Up with Email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.data && response.data.session) {",
+                  "        pm.environment.set('access_token', response.data.session.access_token);",
+                  "        pm.collectionVariables.set('access_token', response.data.session.access_token);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\",\n  \"name\": \"John Doe\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/signup",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "signup"]
+            },
+            "description": "Create a new account using email and password. Optionally provide a name.\n\n**Response includes:**\n- User object\n- Session with access_token and refresh_token\n- Confirmation message about email verification"
+          },
+          "response": []
+        },
+        {
+          "name": "Sign In with Email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.data && response.data.session) {",
+                  "        pm.environment.set('access_token', response.data.session.access_token);",
+                  "        pm.collectionVariables.set('access_token', response.data.session.access_token);",
+                  "        console.log('Access token saved:', response.data.session.access_token);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/signin",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "signin"]
+            },
+            "description": "Sign in with email and password.\n\n**Response includes:**\n- User object with profile data\n- Session with access_token (automatically saved to collection variable)\n- refresh_token for session renewal"
+          },
+          "response": []
+        },
+        {
+          "name": "Sign In with OAuth (Google/Apple)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"google\",\n  \"redirectTo\": \"http://localhost:3000/auth/callback\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/signin/oauth",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "signin", "oauth"]
+            },
+            "description": "Initiate OAuth sign-in with Google or Apple.\n\n**Providers:**\n- `google`\n- `apple`\n\n**Response:**\n- OAuth URL to redirect user to\n- Provider name\n\n**Flow:**\n1. Call this endpoint\n2. Redirect user to the returned URL\n3. User authenticates with provider\n4. Provider redirects back with code\n5. Exchange code for session using `/auth/callback`"
+          },
+          "response": []
+        },
+        {
+          "name": "OAuth Callback",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.data && response.data.session) {",
+                  "        pm.environment.set('access_token', response.data.session.access_token);",
+                  "        pm.collectionVariables.set('access_token', response.data.session.access_token);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"oauth_code_from_provider\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/callback",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "callback"]
+            },
+            "description": "Exchange OAuth authorization code for a session.\n\n**When to use:**\nAfter OAuth provider redirects back to your app with an authorization code.\n\n**Response:**\n- User object (with data from OAuth provider)\n- Session with access_token (automatically saved)\n- User is synced to database"
+          },
+          "response": []
+        },
+        {
+          "name": "Forgot Password (Request OTP)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/forgot-password",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "forgot-password"]
+            },
+            "description": "Request a password reset by sending a 6-digit OTP code to the user's email.\n\n**How it works:**\n1. Generates a random 6-digit OTP code\n2. Stores the OTP in Redis (expires in 10 minutes)\n3. Sends a beautifully formatted email with the OTP\n4. Returns success message (even if email doesn't exist - security best practice)\n\n**Security:**\n- Always returns success to prevent email enumeration\n- OTP expires after 10 minutes\n- OTP is deleted after successful password reset\n\n**Requires:**\n- RESEND_API_KEY configured in environment\n\n**Next step:**\nUse the OTP received in email with the `/auth/reset-password` endpoint"
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Password (Verify OTP)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"otp\": \"123456\",\n  \"new_password\": \"newpassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/reset-password",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "reset-password"]
+            },
+            "description": "Reset password using the OTP code received via email.\n\n**Required fields:**\n- `email` - User's email address\n- `otp` - 6-digit code from email (exact match required)\n- `new_password` - New password (minimum 6 characters)\n\n**Process:**\n1. Verifies OTP from Redis\n2. Updates password in Supabase Auth\n3. Deletes the used OTP\n4. Returns success message\n\n**Error scenarios:**\n- Invalid OTP → 400 Bad Request\n- Expired OTP (>10 minutes) → 400 Bad Request\n- User not found → 404 Not Found\n\n**After success:**\nUser can sign in with their new password using `/auth/signin`"
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "logout"]
+            },
+            "description": "Sign out the current user and invalidate their session.\n\n**Requires:**\n- Bearer token in Authorization header\n\n**Effect:**\n- Invalidates the current session\n- User must sign in again to get a new token"
+          },
+          "response": []
+        }
+      ],
+      "description": "Public authentication endpoints for signup, signin, and logout"
+    },
+    {
+      "name": "User Profile (Protected)",
+      "item": [
+        {
+          "name": "Get Current User",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "me"]
+            },
+            "description": "Get the authenticated user's profile.\n\n**Requires:**\n- Bearer token in Authorization header\n\n**Returns:**\n- User ID\n- Email\n- Name\n- Avatar URL\n- Timestamps"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Current User",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jane Doe\",\n  \"avatar_url\": \"https://example.com/avatar.jpg\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "me"]
+            },
+            "description": "Update the authenticated user's profile.\n\n**Requires:**\n- Bearer token in Authorization header\n\n**Optional fields:**\n- `name` - User's display name\n- `avatar_url` - URL to user's avatar image\n\n**Returns:**\n- Updated user object"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Account",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "me"]
+            },
+            "description": "Delete the authenticated user's account and all associated data.\n\n**Requires:**\n- Bearer token in Authorization header\n\n**Effect:**\n- Permanently deletes user account\n- Cascade deletes all related data (people, memories, wishlist, planner)\n- Cannot be undone\n\n**Returns:**\n- 204 No Content"
+          },
+          "response": []
+        }
+      ],
+      "description": "Protected endpoints requiring authentication. These routes use the Bearer token from signin/signup."
+    }
+  ]
+}
+

@@ -4,7 +4,7 @@ import { Client } from "pg";
 import "dotenv/config";
 
 const MIGRATIONS_DIR = join(__dirname, "migrations");
-const DATABASE_URL = process.env.DATABASE_URL;
+const DATABASE_URL = process.env.DIRECT_URL;
 
 if (!DATABASE_URL) {
   console.error("❌ DATABASE_URL is not set in your environment");
@@ -14,16 +14,10 @@ if (!DATABASE_URL) {
 async function runMigrations() {
   console.log("🩷 Amori API - Database Migrations\n");
 
-  // Configure SSL options to handle self-signed certificates (common in cloud DBs)
-  const sslConfig = DATABASE_URL.includes("localhost")
-    ? false
-    : {
-        rejectUnauthorized: false,
-      };
+  
 
   const client = new Client({
     connectionString: DATABASE_URL,
-    ssl: sslConfig,
   });
 
   try {
