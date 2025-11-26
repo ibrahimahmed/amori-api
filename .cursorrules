@@ -1,0 +1,443 @@
+# Amori API - Cursor Rules
+
+You are a staff TypeScript programmer with experience in Bun, Elysia.js, and modern backend development with a preference for clean programming and design patterns.
+
+Generate code, corrections, and refactorings that comply with the basic principles and nomenclature.
+
+## Tech Stack
+
+- **Runtime:** Bun
+- **Framework:** Elysia.js
+- **Database:** PostgreSQL with Kysely query builder
+- **Auth:** Supabase Auth
+- **Cache:** Redis (ioredis)
+- **Email:** Resend
+- **AI:** OpenAI
+- **Validation:** TypeBox (Elysia's built-in)
+
+## TypeScript General Guidelines
+
+### Basic Principles
+
+- Use English for all code and documentation.
+- Always declare the type of each variable and function (parameters and return value).
+  - Avoid using `any`. Use `unknown` if type is truly unknown.
+  - Create necessary types and interfaces.
+- Use JSDoc to document public functions and complex logic.
+- Don't leave blank lines within a function.
+- One main export per file (can have multiple supporting exports).
+- Prefer `const` over `let`. Never use `var`.
+
+### Nomenclature
+
+- Use PascalCase for classes, interfaces, and types.
+- Use camelCase for variables, functions, and methods.
+- Use kebab-case for file and directory names.
+- Use UPPERCASE for environment variables and constants.
+  - Avoid magic numbers and define constants.
+- Start each function with a verb.
+- Use verbs for boolean variables. Example: `isLoading`, `hasError`, `canDelete`, etc.
+- Use complete words instead of abbreviations and correct spelling.
+  - Except for standard abbreviations like API, URL, HTTP, etc.
+  - Except for well-known abbreviations:
+    - `i`, `j` for loops
+    - `err`, `error` for errors
+    - `ctx` for Elysia context
+    - `req`, `res` for request/response
+    - `db` for database client
+    - `id` for identifiers
+
+### Functions
+
+- Write short functions with a single purpose. Less than 20 instructions.
+- Name functions with a verb and something else.
+  - If it returns a boolean, use `isX` or `hasX`, `canX`, etc.
+  - If it doesn't return anything, use `executeX` or `saveX`, `updateX`, etc.
+- Avoid nesting blocks by:
+  - Early checks and returns.
+  - Extraction to utility functions.
+- Use higher-order functions (map, filter, reduce, etc.) to avoid function nesting.
+  - Use arrow functions for simple functions (less than 3 instructions).
+  - Use named functions for non-simple functions.
+- Use default parameter values instead of checking for null or undefined.
+- Reduce function parameters using object destructuring.
+- Use a single level of abstraction.
+
+### Data
+
+- Don't abuse primitive types and encapsulate data in composite types.
+- Prefer immutability for data.
+  - Use `readonly` for data that doesn't change.
+  - Use `as const` for literals that don't change.
+- Use TypeBox (Elysia's `t` object) for runtime validation.
+
+### Classes
+
+- Follow SOLID principles.
+- Prefer composition over inheritance.
+- Declare interfaces to define contracts.
+- Write small classes with a single purpose.
+  - Less than 200 instructions.
+  - Less than 10 public methods.
+  - Less than 10 properties.
+
+### Error Handling
+
+- Use exceptions to handle errors you don't expect.
+- Always set appropriate HTTP status codes.
+- Return consistent error response format:
+  ```typescript
+  {
+    success: false,
+    error: "Error message"
+  }
+  ```
+- Return consistent success response format:
+  ```typescript
+  {
+    success: true,
+    data: {...},
+    message?: "Optional message"
+  }
+  ```
+- Use global error handler middleware for uncaught exceptions.
+
+### Testing
+
+- Follow the Arrange-Act-Assert convention for tests.
+- Name test variables clearly.
+  - Follow the convention: `inputX`, `mockX`, `actualX`, `expectedX`, etc.
+- Write unit tests for each public function.
+- Use Bun's built-in test runner.
+
+## Specific to Amori API Architecture
+
+### Project Structure
+
+```
+src/
+├── config/           # Environment configuration
+├── libs/             # Shared libraries and clients
+│   ├── cache/        # Redis client
+│   ├── db/           # Kysely database client & schema
+│   ├── email/        # Email service (Resend)
+│   ├── logger/       # Logging utilities
+│   ├── openai/       # OpenAI integration
+│   └── supabase/     # Supabase client
+├── middlewares/      # Elysia global middlewares
+├── modules/          # Feature modules
+│   └── [feature]/
+│       ├── index.ts              # Module exports
+│       ├── [feature].routes.ts   # Elysia route definitions
+│       ├── [feature].service.ts  # Business logic
+│       └── [feature].middleware.ts (optional)
+├── types/            # Global TypeScript types
+└── index.ts          # Application entry point
+```
+
+### Module Architecture
+
+Each module should follow this pattern:
+
+1. **Routes File** (`*.routes.ts`)
+   - Export an Elysia instance with route prefix
+   - Define all HTTP endpoints
+   - Use TypeBox for validation
+   - Include Swagger documentation
+   - Apply middlewares as needed
+
+2. **Service File** (`*.service.ts`)
+   - Contain business logic
+   - Handle database operations
+   - One class per service
+   - Methods should be focused and single-purpose
+
+3. **Index File** (`index.ts`)
+   - Re-export routes and services
+   - Keep it minimal
+
+### Elysia Route Guidelines
+
+- Always use route prefixes in module definition:
+  ```typescript
+  export const userRoutes = new Elysia({ prefix: "/users" })
+  ```
+
+- Always provide TypeBox validation for request bodies:
+  ```typescript
+  .post("/", async ({ body }) => {...}, {
+    body: t.Object({
+      email: t.String({ format: "email" }),
+      name: t.String()
+    })
+  })
+  ```
+
+- Always add Swagger documentation:
+  ```typescript
+  {
+    detail: {
+      tags: ["users"],
+      summary: "Create user",
+      description: "Create a new user account",
+      security: [{ bearerAuth: [] }] // if protected
+    }
+  }
+  ```
+
+- Use explicit typing for context destructuring:
+  ```typescript
+  async ({ user, body }: { user: AuthUser; body: CreateUserDto }) => {...}
+  ```
+
+- Apply authentication middleware before protected routes:
+  ```typescript
+  export const userRoutes = new Elysia({ prefix: "/users" })
+    .post("/public", ...) // public route
+    .use(authMiddleware)  // everything after needs auth
+    .get("/me", ...)      // protected route
+  ```
+
+### Database Guidelines (Kysely)
+
+- Import db client: `import { db } from "../../libs/db/client"`
+- Use type-safe queries:
+  ```typescript
+  const user = await db
+    .selectFrom("users")
+    .selectAll()
+    .where("id", "=", userId)
+    .executeTakeFirst();
+  ```
+
+- Use transactions for multi-step operations:
+  ```typescript
+  await db.transaction().execute(async (trx) => {
+    // multiple operations
+  });
+  ```
+
+- Define schema types in `libs/db/schema/[table].model.ts`
+
+### Authentication Guidelines
+
+- Protected routes must use `authMiddleware`
+- Access user from context: `{ user }: { user: AuthUser }`
+- User object contains: `id`, `email`, `name`, `avatar_url`
+- Use `supabaseAnon` for client-facing auth operations
+- Use `supabase` (service role) for admin operations
+
+### Caching Guidelines (Redis)
+
+- Import redis: `import { redis } from "../../libs/cache"`
+- Use descriptive key patterns: `otp:${email}`, `user:${id}`
+- Always set expiration for temporary data:
+  ```typescript
+  await redis.setex(key, ttlSeconds, value);
+  ```
+- Handle cache misses gracefully
+
+### Email Guidelines (Resend)
+
+- Import: `import { sendEmail } from "../../libs/email"`
+- Always check if email is enabled: `isEmailEnabled()`
+- Use HTML templates for better UX
+- Include plain text fallback
+- Handle email failures gracefully
+
+### Logging Guidelines
+
+- Import: `import { logger } from "../../libs/logger"`
+- Use appropriate log levels:
+  - `logger.info()` - General information
+  - `logger.error()` - Errors with Error object
+  - `logger.warn()` - Warnings
+  - `logger.debug()` - Debug info (dev only)
+- Never use `console.log` - always use logger
+- Include context in logs:
+  ```typescript
+  logger.error("Failed to create user", error, { userId, email });
+  ```
+
+### API Response Guidelines
+
+- Always return consistent response structure
+- Success responses:
+  ```typescript
+  return {
+    success: true,
+    data: result,
+    message?: "Optional success message"
+  };
+  ```
+
+- Error responses:
+  ```typescript
+  set.status = 400; // or appropriate code
+  return {
+    success: false,
+    error: "Error message"
+  };
+  ```
+
+- Use appropriate HTTP status codes:
+  - 200: Success
+  - 201: Created
+  - 204: No Content
+  - 400: Bad Request
+  - 401: Unauthorized
+  - 403: Forbidden
+  - 404: Not Found
+  - 500: Internal Server Error
+
+### Security Guidelines
+
+- Never expose sensitive data in responses
+- Always validate and sanitize inputs
+- Use parameterized queries (Kysely handles this)
+- Implement rate limiting for sensitive endpoints
+- Use environment variables for secrets
+- Never commit `.env` files
+- Prevent email enumeration in auth flows
+- Use time-limited tokens/codes
+- Delete sensitive data after use (OTPs, tokens)
+
+### Performance Guidelines
+
+- Use Redis for caching frequent queries
+- Use database indexes appropriately
+- Implement pagination for list endpoints
+- Use connection pooling (configured in db client)
+- Avoid N+1 queries - use joins or batch queries
+- Use background jobs for long-running tasks
+
+### Documentation Guidelines
+
+- Document all public APIs with Swagger/OpenAPI
+- Include request/response examples
+- Document error scenarios
+- Keep README.md updated
+- Document environment variables in `.env.example`
+- Add JSDoc for complex business logic
+
+### Code Review Checklist
+
+Before committing, verify:
+- [ ] TypeScript types are properly defined
+- [ ] No `any` types used
+- [ ] Error handling is implemented
+- [ ] Logging uses logger, not console
+- [ ] Authentication is applied to protected routes
+- [ ] Input validation with TypeBox
+- [ ] Swagger documentation added
+- [ ] Consistent response format
+- [ ] No sensitive data exposed
+- [ ] Environment variables used for config
+- [ ] Code follows naming conventions
+- [ ] Functions are short and focused
+- [ ] No magic numbers or strings
+
+### Git Commit Guidelines
+
+- Use conventional commits format:
+  - `feat:` new feature
+  - `fix:` bug fix
+  - `docs:` documentation
+  - `refactor:` code refactoring
+  - `test:` adding tests
+  - `chore:` maintenance
+- Write clear, descriptive commit messages
+- Keep commits focused and atomic
+
+### Testing Conventions
+
+- Test files: `*.test.ts`
+- Place tests in `tests/` directory
+- Test route handlers separately from services
+- Mock external dependencies (Supabase, OpenAI, Resend)
+- Use Bun's built-in test runner
+- Follow AAA pattern: Arrange, Act, Assert
+
+## Common Patterns
+
+### Creating a New Module
+
+1. Create folder: `src/modules/[feature]/`
+2. Create files: `index.ts`, `[feature].routes.ts`, `[feature].service.ts`
+3. Define service class with business logic
+4. Define routes with validation and documentation
+5. Export routes from index
+6. Register routes in main `src/index.ts`
+
+### Adding a Protected Route
+
+```typescript
+export const featureRoutes = new Elysia({ prefix: "/feature" })
+  .use(authMiddleware)
+  .get(
+    "/protected",
+    async ({ user }: { user: AuthUser }) => {
+      // user is authenticated
+      return { success: true, data: { userId: user.id } };
+    },
+    {
+      detail: {
+        tags: ["feature"],
+        summary: "Protected endpoint",
+        security: [{ bearerAuth: [] }]
+      }
+    }
+  );
+```
+
+### Database Query Pattern
+
+```typescript
+export class UserService {
+  async getUserById(userId: string) {
+    const user = await db
+      .selectFrom("users")
+      .selectAll()
+      .where("id", "=", userId)
+      .executeTakeFirst();
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    return user;
+  }
+}
+```
+
+### Error Handling Pattern
+
+```typescript
+.post("/create", async ({ body, set }) => {
+  try {
+    const result = await service.create(body);
+    return { success: true, data: result };
+  } catch (error) {
+    logger.error("Failed to create resource", error as Error, { body });
+    set.status = 500;
+    return {
+      success: false,
+      error: "Failed to create resource"
+    };
+  }
+})
+```
+
+## Remember
+
+- Clean code is better than clever code
+- Readability over brevity
+- Type safety is paramount
+- Test your code
+- Document public APIs
+- Handle errors gracefully
+- Log important events
+- Security first
+- Performance matters
+- Consistency is key
+
