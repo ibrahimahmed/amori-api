@@ -3,6 +3,7 @@ import { authMiddleware } from "../auth";
 import { peopleService, ServiceError } from "./people.service";
 import type { RelationType } from "../../libs/db/schema";
 import { logger } from "../../libs/logger";
+import { peopleReadRateLimit, peopleWriteRateLimit } from "../../middlewares/rateLimit";
 
 const RELATION_TYPES = ["partner", "spouse", "parent", "child", "sibling", "friend", "colleague", "mentor", "other"] as const;
 
@@ -23,8 +24,12 @@ function handleError(
   return { success: false, error: "Internal server error" };
 }
 
-export const peopleRoutes = new Elysia({ prefix: "/people" })
+/**
+ * Read routes (GET) - 60 requests per minute
+ */
+const readRoutes = new Elysia()
   .use(authMiddleware)
+  .use(peopleReadRateLimit)
   // Get all people
   .get(
     "/",
@@ -49,7 +54,7 @@ export const peopleRoutes = new Elysia({ prefix: "/people" })
       detail: {
         tags: ["people"],
         summary: "Get all people",
-        description: "Get all relationships for the authenticated user",
+        description: "Get all relationships for the authenticated user. Rate limit: 60/min",
         security: [{ bearerAuth: [] }],
       },
     }
@@ -72,7 +77,7 @@ export const peopleRoutes = new Elysia({ prefix: "/people" })
       detail: {
         tags: ["people"],
         summary: "Get upcoming events",
-        description: "Get upcoming birthdays, anniversaries, memory anniversaries, and plans",
+        description: "Get upcoming birthdays, anniversaries, memory anniversaries, and plans. Rate limit: 60/min",
         security: [{ bearerAuth: [] }],
       },
     }
@@ -99,11 +104,18 @@ export const peopleRoutes = new Elysia({ prefix: "/people" })
       detail: {
         tags: ["people"],
         summary: "Get person profile",
-        description: "Get full profile of a person including memories, upcoming plans, and wishlist",
+        description: "Get full profile of a person including memories, upcoming plans, and wishlist. Rate limit: 60/min",
         security: [{ bearerAuth: [] }],
       },
     }
-  )
+  );
+
+/**
+ * Write routes (POST, PATCH, DELETE) - 20 requests per minute
+ */
+const writeRoutes = new Elysia()
+  .use(authMiddleware)
+  .use(peopleWriteRateLimit)
   // Create person
   .post(
     "/",
@@ -152,7 +164,7 @@ export const peopleRoutes = new Elysia({ prefix: "/people" })
       detail: {
         tags: ["people"],
         summary: "Create person",
-        description: "Add a new relationship",
+        description: "Add a new relationship. Rate limit: 20/min",
         security: [{ bearerAuth: [] }],
       },
     }
@@ -210,7 +222,7 @@ export const peopleRoutes = new Elysia({ prefix: "/people" })
       detail: {
         tags: ["people"],
         summary: "Update person",
-        description: "Update an existing relationship",
+        description: "Update an existing relationship. Rate limit: 20/min",
         security: [{ bearerAuth: [] }],
       },
     }
@@ -238,8 +250,15 @@ export const peopleRoutes = new Elysia({ prefix: "/people" })
       detail: {
         tags: ["people"],
         summary: "Delete person",
-        description: "Delete a relationship and all associated data",
+        description: "Delete a relationship and all associated data. Rate limit: 20/min",
         security: [{ bearerAuth: [] }],
       },
     }
   );
+
+/**
+ * People routes - combines read and write routes
+ */
+export const peopleRoutes = new Elysia({ prefix: "/people" })
+  .use(readRoutes)
+  .use(writeRoutes);

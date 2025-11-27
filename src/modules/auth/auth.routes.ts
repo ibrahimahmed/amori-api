@@ -4,9 +4,17 @@ import { db } from "../../libs/db/client";
 import { supabaseAnon } from "../../libs/supabase";
 import { sendEmail, isEmailEnabled } from "../../libs/email";
 import { redis } from "../../libs/cache";
+import {
+  signupRateLimit,
+  loginRateLimit,
+  oauthRateLimit,
+  passwordResetRateLimit,
+  otpVerifyRateLimit,
+} from "../../middlewares/rateLimit";
 
-export const authRoutes = new Elysia({ prefix: "/auth" })
-  // Sign up with email
+// Signup routes (rate limited: 5/hour per IP)
+const signupRoutes = new Elysia()
+  .use(signupRateLimit)
   .post(
     "/signup",
     async ({ body, set }) => {
@@ -59,11 +67,14 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       detail: {
         tags: ["auth"],
         summary: "Sign up with email",
-        description: "Create a new account using email and password",
+        description: "Create a new account using email and password. Rate limited: 5 signups per hour per IP.",
       },
     }
-  )
-  // Sign in with email
+  );
+
+// Login routes (rate limited: 5 attempts per 15 minutes per IP)
+const loginRoutes = new Elysia()
+  .use(loginRateLimit)
   .post(
     "/signin",
     async ({ body, set }) => {
@@ -110,11 +121,14 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       detail: {
         tags: ["auth"],
         summary: "Sign in with email",
-        description: "Sign in using email and password",
+        description: "Sign in using email and password. Rate limited: 5 attempts per 15 minutes per IP.",
       },
     }
-  )
-  // Sign in with OAuth (Google, Apple)
+  );
+
+// OAuth routes (rate limited: 10 attempts per 15 minutes per IP)
+const oauthRoutes = new Elysia()
+  .use(oauthRateLimit)
   .post(
     "/signin/oauth",
     async ({ body, set }) => {
@@ -151,11 +165,10 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       detail: {
         tags: ["auth"],
         summary: "Sign in with OAuth",
-        description: "Initiate OAuth sign-in with Google or Apple. Returns a URL to redirect the user to.",
+        description: "Initiate OAuth sign-in with Google or Apple. Rate limited: 10 attempts per 15 minutes per IP.",
       },
     }
   )
-  // Handle OAuth callback (for server-side flow)
   .post(
     "/callback",
     async ({ body, set }) => {
@@ -206,8 +219,11 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
         description: "Exchange OAuth code for session (server-side flow)",
       },
     }
-  )
-  // Forgot Password - Send OTP to email
+  );
+
+// Password reset request routes (rate limited: 3 per hour per IP)
+const forgotPasswordRoutes = new Elysia()
+  .use(passwordResetRateLimit)
   .post(
     "/forgot-password",
     async ({ body, set }) => {
@@ -309,11 +325,14 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       detail: {
         tags: ["auth"],
         summary: "Request password reset",
-        description: "Send a 6-digit OTP code to the user's email for password reset",
+        description: "Send a 6-digit OTP code to the user's email. Rate limited: 3 requests per hour per IP.",
       },
     }
-  )
-  // Reset Password - Verify OTP and update password
+  );
+
+// OTP verification routes (rate limited: 5 attempts per 15 minutes per IP)
+const resetPasswordRoutes = new Elysia()
+  .use(otpVerifyRateLimit)
   .post(
     "/reset-password",
     async ({ body, set }) => {
@@ -383,61 +402,60 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       detail: {
         tags: ["auth"],
         summary: "Reset password with OTP",
-        description: "Verify the OTP code and set a new password",
+        description: "Verify the OTP code and set a new password. Rate limited: 5 attempts per 15 minutes per IP.",
       },
     }
-  )
-  // Logout
-  .post(
-    "/logout",
-    async ({ request, set }) => {
-      const authHeader = request.headers.get("authorization");
+  );
 
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        set.status = 401;
-        return {
-          success: false,
-          error: "No authorization header provided",
-        };
-      }
+// Logout (no rate limit needed, requires auth token)
+const logoutRoutes = new Elysia().post(
+  "/logout",
+  async ({ request, set }) => {
+    const authHeader = request.headers.get("authorization");
 
-      const token = authHeader.replace("Bearer ", "");
-
-      // Sign out the user (invalidates the token)
-      const { error } = await supabaseAnon.auth.admin.signOut(token);
-
-      if (error) {
-        set.status = 400;
-        return {
-          success: false,
-          error: error.message,
-        };
-      }
-
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      set.status = 401;
       return {
-        success: true,
-        message: "Logged out successfully",
+        success: false,
+        error: "No authorization header provided",
       };
-    },
-    {
-      detail: {
-        tags: ["auth"],
-        summary: "Logout",
-        description: "Sign out the current user and invalidate their session",
-        security: [{ bearerAuth: [] }],
-      },
     }
-  )
-  // Get current user profile (protected route)
+
+    const token = authHeader.replace("Bearer ", "");
+
+    // Sign out the user (invalidates the token)
+    const { error } = await supabaseAnon.auth.admin.signOut(token);
+
+    if (error) {
+      set.status = 400;
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+
+    return {
+      success: true,
+      message: "Logged out successfully",
+    };
+  },
+  {
+    detail: {
+      tags: ["auth"],
+      summary: "Logout",
+      description: "Sign out the current user and invalidate their session",
+      security: [{ bearerAuth: [] }],
+    },
+  }
+);
+
+// Protected routes (require authentication)
+const protectedRoutes = new Elysia()
   .use(authMiddleware)
   .get(
     "/me",
     async ({ user }: { user: AuthUser }) => {
-      const dbUser = await db
-        .selectFrom("users")
-        .selectAll()
-        .where("id", "=", user.id)
-        .executeTakeFirst();
+      const dbUser = await db.selectFrom("users").selectAll().where("id", "=", user.id).executeTakeFirst();
 
       return {
         success: true,
@@ -453,7 +471,6 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       },
     }
   )
-  // Update current user profile
   .patch(
     "/me",
     async ({ user, body }: { user: AuthUser; body: { name?: string; avatar_url?: string } }) => {
@@ -485,10 +502,9 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
       },
     }
   )
-  // Delete account
   .delete(
     "/me",
-    async ({ user, set }: { user: AuthUser; set: any }) => {
+    async ({ user, set }: { user: AuthUser; set: { status: number } }) => {
       // This will cascade delete all related data
       await db.deleteFrom("users").where("id", "=", user.id).execute();
 
@@ -505,3 +521,12 @@ export const authRoutes = new Elysia({ prefix: "/auth" })
     }
   );
 
+// Combine all auth routes
+export const authRoutes = new Elysia({ prefix: "/auth" })
+  .use(signupRoutes)
+  .use(loginRoutes)
+  .use(oauthRoutes)
+  .use(forgotPasswordRoutes)
+  .use(resetPasswordRoutes)
+  .use(logoutRoutes)
+  .use(protectedRoutes);

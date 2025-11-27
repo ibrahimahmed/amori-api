@@ -36,17 +36,79 @@ export const rateLimit = (options: RateLimitOptions) => {
     });
 };
 
-// Usage examples
-export const authRateLimit = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 5, // 5 attempts per window
-  keyGenerator: req => {
-    const url = new URL(req.url);
-    return `auth:${url.hostname}:${url.pathname}`;
-  },
-});
-
+// General API rate limit
 export const generalRateLimit = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   maxRequests: 100, // 100 requests per minute
+});
+
+// Strict rate limit for login attempts (prevent brute force)
+export const loginRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 5, // 5 attempts per 15 minutes
+  keyGenerator: (req) => {
+    // Rate limit by IP + endpoint
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    return `login:${ip}`;
+  },
+});
+
+// Rate limit for signup (prevent spam accounts)
+export const signupRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  maxRequests: 5, // 5 signups per hour per IP
+  keyGenerator: (req) => {
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    return `signup:${ip}`;
+  },
+});
+
+// Strict rate limit for password reset (prevent abuse)
+export const passwordResetRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  maxRequests: 3, // 3 reset requests per hour
+  keyGenerator: (req) => {
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    return `password-reset:${ip}`;
+  },
+});
+
+// Rate limit for OTP verification (prevent brute force)
+export const otpVerifyRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 5, // 5 OTP attempts per 15 minutes
+  keyGenerator: (req) => {
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    return `otp-verify:${ip}`;
+  },
+});
+
+// Rate limit for OAuth (moderate limit)
+export const oauthRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 10, // 10 OAuth attempts per 15 minutes
+  keyGenerator: (req) => {
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    return `oauth:${ip}`;
+  },
+});
+
+// Rate limit for people read operations (higher limit)
+export const peopleReadRateLimit = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  maxRequests: 60, // 60 reads per minute per IP
+  keyGenerator: (req) => {
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    return `people-read:${ip}`;
+  },
+});
+
+// Rate limit for people write operations (stricter limit)
+export const peopleWriteRateLimit = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  maxRequests: 20, // 20 writes per minute per IP
+  keyGenerator: (req) => {
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    return `people-write:${ip}`;
+  },
 });
