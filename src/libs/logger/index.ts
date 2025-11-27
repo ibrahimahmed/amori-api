@@ -13,6 +13,13 @@ export interface LogContext {
   error?: string;
   stack?: string;
   status?: number | string;
+  // Cache-related context
+  key?: string;
+  keys?: string[];
+  keysCount?: number;
+  ttl?: number;
+  // Generic extra data
+  [key: string]: unknown;
 }
 
 class Logger {

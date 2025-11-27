@@ -1,3 +1,2 @@
 export { peopleRoutes } from "./people.routes";
-export { peopleService } from "./people.service";
-
+export { peopleService, ServiceError } from "./people.service";

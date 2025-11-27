@@ -1,20 +1,46 @@
 import { Elysia, t } from "elysia";
 import { authMiddleware } from "../auth";
-import { peopleService } from "./people.service";
+import { peopleService, ServiceError } from "./people.service";
 import type { RelationType } from "../../libs/db/schema";
+import { logger } from "../../libs/logger";
 
-const relationTypes = ["partner", "spouse", "parent", "child", "sibling", "friend", "colleague", "mentor", "other"];
+const RELATION_TYPES = ["partner", "spouse", "parent", "child", "sibling", "friend", "colleague", "mentor", "other"] as const;
+
+/**
+ * Handle service errors and return appropriate HTTP response
+ */
+function handleError(
+  error: unknown,
+  set: { status?: number | string },
+  context: { userId?: string; operation: string }
+): { success: false; error: string } {
+  if (error instanceof ServiceError) {
+    set.status = error.statusCode;
+    return { success: false, error: error.message };
+  }
+  logger.error(`Unexpected error in ${context.operation}`, error as Error, { userId: context.userId });
+  set.status = 500;
+  return { success: false, error: "Internal server error" };
+}
 
 export const peopleRoutes = new Elysia({ prefix: "/people" })
   .use(authMiddleware)
   // Get all people
   .get(
     "/",
-    async ({ user, query }) => {
-      const people = await peopleService.getAll(user.id, {
-        relationType: query.relation_type as RelationType | undefined,
-      });
-      return { success: true, data: people };
+    async ({ user, query, set }) => {
+      try {
+        if (query.relation_type && !RELATION_TYPES.includes(query.relation_type as (typeof RELATION_TYPES)[number])) {
+          set.status = 400;
+          return { success: false, error: `Invalid relation_type. Must be one of: ${RELATION_TYPES.join(", ")}` };
+        }
+        const people = await peopleService.getAll(user.id, {
+          relationType: query.relation_type as RelationType | undefined,
+        });
+        return { success: true, data: people };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "getAll" });
+      }
     },
     {
       query: t.Object({
@@ -31,9 +57,13 @@ export const peopleRoutes = new Elysia({ prefix: "/people" })
   // Get upcoming birthdays and anniversaries in one call
   .get(
     "/upcoming",
-    async ({ user, query }) => {
-      const events = await peopleService.getUpcomingEvents(user.id, query.days || 30);
-      return { success: true, data: events };
+    async ({ user, query, set }) => {
+      try {
+        const events = await peopleService.getUpcomingEvents(user.id, query.days || 30);
+        return { success: true, data: events };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "getUpcomingEvents" });
+      }
     },
     {
       query: t.Object({
@@ -42,7 +72,7 @@ export const peopleRoutes = new Elysia({ prefix: "/people" })
       detail: {
         tags: ["people"],
         summary: "Get upcoming events",
-        description: "Get upcoming birthdays and anniversaries in a single optimized call",
+        description: "Get upcoming birthdays, anniversaries, memory anniversaries, and plans",
         security: [{ bearerAuth: [] }],
       },
     }
@@ -51,16 +81,20 @@ export const peopleRoutes = new Elysia({ prefix: "/people" })
   .get(
     "/:id",
     async ({ user, params, set }) => {
-      const profile = await peopleService.getFullProfile(user.id, params.id);
-      if (!profile) {
-        set.status = 404;
-        return { success: false, error: "Person not found" };
+      try {
+        const profile = await peopleService.getFullProfile(user.id, params.id);
+        if (!profile) {
+          set.status = 404;
+          return { success: false, error: "Person not found" };
+        }
+        return { success: true, data: profile };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "getFullProfile" });
       }
-      return { success: true, data: profile };
     },
     {
       params: t.Object({
-        id: t.String(),
+        id: t.String({ format: "uuid", error: "Invalid person ID format" }),
       }),
       detail: {
         tags: ["people"],
@@ -73,30 +107,47 @@ export const peopleRoutes = new Elysia({ prefix: "/people" })
   // Create person
   .post(
     "/",
-    async ({ user, body }) => {
-      const person = await peopleService.create({
-        user_id: user.id,
-        name: body.name,
-        relation_type: body.relation_type as RelationType,
-        birthday: body.birthday ? new Date(body.birthday) : null,
-        anniversary: body.anniversary ? new Date(body.anniversary) : null,
-        notes: body.notes,
-        avatar_url: body.avatar_url,
-        phone: body.phone,
-        email: body.email,
-      });
-      return { success: true, data: person };
+    async ({ user, body, set }) => {
+      try {
+        if (!RELATION_TYPES.includes(body.relation_type as (typeof RELATION_TYPES)[number])) {
+          set.status = 400;
+          return { success: false, error: `Invalid relation_type. Must be one of: ${RELATION_TYPES.join(", ")}` };
+        }
+        if (body.birthday && isNaN(Date.parse(body.birthday))) {
+          set.status = 400;
+          return { success: false, error: "Invalid birthday date format" };
+        }
+        if (body.anniversary && isNaN(Date.parse(body.anniversary))) {
+          set.status = 400;
+          return { success: false, error: "Invalid anniversary date format" };
+        }
+        const person = await peopleService.create({
+          user_id: user.id,
+          name: body.name,
+          relation_type: body.relation_type as RelationType,
+          birthday: body.birthday ? new Date(body.birthday) : null,
+          anniversary: body.anniversary ? new Date(body.anniversary) : null,
+          notes: body.notes,
+          avatar_url: body.avatar_url,
+          phone: body.phone,
+          email: body.email,
+        });
+        set.status = 201;
+        return { success: true, data: person, message: "Person created successfully" };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "create" });
+      }
     },
     {
       body: t.Object({
-        name: t.String({ minLength: 1 }),
-        relation_type: t.String(),
+        name: t.String({ minLength: 1, error: "Name is required" }),
+        relation_type: t.String({ error: "Relation type is required" }),
         birthday: t.Optional(t.String()),
         anniversary: t.Optional(t.String()),
         notes: t.Optional(t.String()),
         avatar_url: t.Optional(t.String()),
         phone: t.Optional(t.String()),
-        email: t.Optional(t.String()),
+        email: t.Optional(t.String({ format: "email", error: "Invalid email format" })),
       }),
       detail: {
         tags: ["people"],
@@ -110,25 +161,41 @@ export const peopleRoutes = new Elysia({ prefix: "/people" })
   .patch(
     "/:id",
     async ({ user, params, body, set }) => {
-      const person = await peopleService.update(user.id, params.id, {
-        name: body.name,
-        relation_type: body.relation_type as RelationType | undefined,
-        birthday: body.birthday ? new Date(body.birthday) : undefined,
-        anniversary: body.anniversary ? new Date(body.anniversary) : undefined,
-        notes: body.notes,
-        avatar_url: body.avatar_url,
-        phone: body.phone,
-        email: body.email,
-      });
-      if (!person) {
-        set.status = 404;
-        return { success: false, error: "Person not found" };
+      try {
+        if (body.relation_type && !RELATION_TYPES.includes(body.relation_type as (typeof RELATION_TYPES)[number])) {
+          set.status = 400;
+          return { success: false, error: `Invalid relation_type. Must be one of: ${RELATION_TYPES.join(", ")}` };
+        }
+        if (body.birthday && isNaN(Date.parse(body.birthday))) {
+          set.status = 400;
+          return { success: false, error: "Invalid birthday date format" };
+        }
+        if (body.anniversary && isNaN(Date.parse(body.anniversary))) {
+          set.status = 400;
+          return { success: false, error: "Invalid anniversary date format" };
+        }
+        const person = await peopleService.update(user.id, params.id, {
+          name: body.name,
+          relation_type: body.relation_type as RelationType | undefined,
+          birthday: body.birthday ? new Date(body.birthday) : undefined,
+          anniversary: body.anniversary ? new Date(body.anniversary) : undefined,
+          notes: body.notes,
+          avatar_url: body.avatar_url,
+          phone: body.phone,
+          email: body.email,
+        });
+        if (!person) {
+          set.status = 404;
+          return { success: false, error: "Person not found" };
+        }
+        return { success: true, data: person, message: "Person updated successfully" };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "update" });
       }
-      return { success: true, data: person };
     },
     {
       params: t.Object({
-        id: t.String(),
+        id: t.String({ format: "uuid", error: "Invalid person ID format" }),
       }),
       body: t.Object({
         name: t.Optional(t.String({ minLength: 1 })),
@@ -138,7 +205,7 @@ export const peopleRoutes = new Elysia({ prefix: "/people" })
         notes: t.Optional(t.String()),
         avatar_url: t.Optional(t.String()),
         phone: t.Optional(t.String()),
-        email: t.Optional(t.String()),
+        email: t.Optional(t.String({ format: "email", error: "Invalid email format" })),
       }),
       detail: {
         tags: ["people"],
@@ -152,22 +219,26 @@ export const peopleRoutes = new Elysia({ prefix: "/people" })
   .delete(
     "/:id",
     async ({ user, params, set }) => {
-      const deleted = await peopleService.delete(user.id, params.id);
-      if (!deleted) {
-        set.status = 404;
-        return { success: false, error: "Person not found" };
+      try {
+        const deleted = await peopleService.delete(user.id, params.id);
+        if (!deleted) {
+          set.status = 404;
+          return { success: false, error: "Person not found" };
+        }
+        set.status = 204;
+        return null;
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "delete" });
       }
-      set.status = 204;
-      return null;
     },
     {
       params: t.Object({
-        id: t.String(),
+        id: t.String({ format: "uuid", error: "Invalid person ID format" }),
       }),
       detail: {
         tags: ["people"],
         summary: "Delete person",
-        description: "Delete a relationship",
+        description: "Delete a relationship and all associated data",
         security: [{ bearerAuth: [] }],
       },
     }
