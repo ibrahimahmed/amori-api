@@ -227,15 +227,91 @@ Each module should follow this pattern:
 - Use `supabaseAnon` for client-facing auth operations
 - Use `supabase` (service role) for admin operations
 
+#### Auth Middleware Type Propagation
+
+When creating auth middleware with Elysia, use `{ as: "global" }` to propagate types:
+
+```typescript
+// In auth.middleware.ts
+export const authMiddleware = new Elysia({ name: "auth" })
+  .derive({ as: "global" }, async ({ headers, set }): Promise<{ user: AuthUser }> => {
+    // ... authentication logic
+    return { user };
+  });
+```
+
+Without `{ as: "global" }`, the `user` property won't be typed in consuming routes:
+```typescript
+// ❌ Without as: "global" - TypeScript error: Property 'user' does not exist
+.get("/", ({ user }) => { ... })
+
+// ✅ With as: "global" - Works correctly
+.get("/", ({ user }) => { ... })
+```
+
 ### Caching Guidelines (Redis)
 
 - Import redis: `import { redis } from "../../libs/cache"`
-- Use descriptive key patterns: `otp:${email}`, `user:${id}`
+- Use descriptive key patterns: `otp:${email}`, `user:${id}`, `people:list:${userId}`
 - Always set expiration for temporary data:
   ```typescript
   await redis.setex(key, ttlSeconds, value);
   ```
 - Handle cache misses gracefully
+- Implement cache invalidation on write operations
+
+#### Caching Pattern in Services
+
+```typescript
+// Cache TTL constants
+private readonly CACHE_TTL = {
+  LIST: 120,      // 2 minutes for lists
+  PROFILE: 300,   // 5 minutes for profiles
+  UPCOMING: 60,   // 1 minute for time-sensitive data
+} as const;
+
+// Cache key generation
+private getCacheKey(type: string, ...args: string[]): string {
+  return `people:${type}:${args.join(":")}`;
+}
+
+// Get from cache helper
+private async getCache<T>(key: string): Promise<T | null> {
+  try {
+    const cached = await redis.get(key);
+    return cached ? JSON.parse(cached) : null;
+  } catch {
+    return null; // Gracefully handle cache errors
+  }
+}
+
+// Set cache helper
+private async setCache(key: string, data: unknown, ttl: number): Promise<void> {
+  try {
+    await redis.setex(key, ttl, JSON.stringify(data));
+  } catch {
+    // Log but don't fail on cache errors
+  }
+}
+
+// Invalidate cache on writes
+async invalidateCache(userId: string): Promise<void> {
+  try {
+    const keys = await redis.keys(`people:*:${userId}*`);
+    if (keys.length > 0) {
+      await redis.del(...keys);
+    }
+  } catch {
+    // Log but don't fail
+  }
+}
+```
+
+#### When to Cache
+
+- **Cache**: List queries, profile lookups, upcoming events
+- **Don't cache**: Filtered queries (relation_type), write operations
+- **Invalidate on**: Create, Update, Delete operations
 
 ### Email Guidelines (Resend)
 
@@ -323,19 +399,36 @@ Each module should follow this pattern:
 ### Code Review Checklist
 
 Before committing, verify:
+
+#### Code Quality
 - [ ] TypeScript types are properly defined
-- [ ] No `any` types used
-- [ ] Error handling is implemented
+- [ ] No `any` types used (except in test mocks)
+- [ ] Error handling is implemented with ServiceError
 - [ ] Logging uses logger, not console
-- [ ] Authentication is applied to protected routes
-- [ ] Input validation with TypeBox
-- [ ] Swagger documentation added
-- [ ] Consistent response format
-- [ ] No sensitive data exposed
-- [ ] Environment variables used for config
 - [ ] Code follows naming conventions
 - [ ] Functions are short and focused
 - [ ] No magic numbers or strings
+
+#### API Standards
+- [ ] Authentication is applied to protected routes
+- [ ] Input validation with TypeBox
+- [ ] Swagger documentation added
+- [ ] Consistent response format (`{ success, data/error }`)
+- [ ] Appropriate HTTP status codes
+- [ ] No sensitive data exposed
+
+#### Performance
+- [ ] Caching implemented for read-heavy endpoints
+- [ ] Cache invalidation on write operations
+- [ ] Optimized database queries (avoid N+1)
+- [ ] Environment variables used for config
+
+#### Testing
+- [ ] Unit tests written for new service methods
+- [ ] Route tests cover happy path and error cases
+- [ ] Mocks used (no real DB/Redis connections)
+- [ ] All tests pass (`bun test`)
+- [ ] Edge cases covered (empty results, invalid input)
 
 ### Git Commit Guidelines
 
@@ -351,12 +444,192 @@ Before committing, verify:
 
 ### Testing Conventions
 
-- Test files: `*.test.ts`
-- Place tests in `tests/` directory
-- Test route handlers separately from services
-- Mock external dependencies (Supabase, OpenAI, Resend)
-- Use Bun's built-in test runner
-- Follow AAA pattern: Arrange, Act, Assert
+#### Test Structure
+
+```
+tests/
+├── setup.ts                           # Preloaded env setup
+├── routes/
+│   └── health.test.ts                 # Health endpoint tests
+└── modules/
+    └── [feature]/
+        ├── [feature].routes.test.ts   # Route/controller tests
+        └── [feature].service.test.ts  # Service/business logic tests
+```
+
+#### Test Configuration
+
+Tests use `bunfig.toml` preload for environment setup:
+```toml
+[test]
+preload = ["./tests/setup.ts"]
+```
+
+The `tests/setup.ts` sets required env vars before test imports:
+```typescript
+process.env.NODE_ENV = "test";
+process.env.DATABASE_URL = "postgres://test:test@localhost:5432/test";
+process.env.REDIS_URL = "redis://localhost:6379";
+// ... other required env vars
+```
+
+#### Mocking Strategy
+
+**NEVER use real database or Redis connections in tests.** Mock everything:
+
+1. **Route Tests** - Mock the service layer entirely:
+```typescript
+const mockPeopleService = {
+  getAll: mock((_userId: string) => Promise.resolve([mockPerson])),
+  create: mock((_data: Record<string, unknown>) => Promise.resolve(mockPerson)),
+  // ... other methods
+};
+```
+
+2. **Service Tests** - Mock database (Kysely) and cache (Redis):
+```typescript
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// Mock Redis
+const mockRedisGet = mock((): Promise<any> => Promise.resolve(null));
+const mockRedisSetex = mock((): Promise<any> => Promise.resolve("OK"));
+const mockRedisKeys = mock((): Promise<any> => Promise.resolve([]));
+const mockRedisDel = mock((): Promise<any> => Promise.resolve(1));
+
+// Mock Kysely database chain
+const mockExecute = mock((): Promise<any> => Promise.resolve([]));
+const mockExecuteTakeFirst = mock((): Promise<any> => Promise.resolve(null));
+const mockSqlExecute = mock((): Promise<any> => Promise.resolve({ rows: [] }));
+
+const mockDbChain = {
+  selectFrom: () => mockDbChain,
+  insertInto: () => mockDbChain,
+  updateTable: () => mockDbChain,
+  deleteFrom: () => mockDbChain,
+  selectAll: () => mockDbChain,
+  select: () => mockDbChain,
+  values: () => mockDbChain,
+  set: () => mockDbChain,
+  where: () => mockDbChain,
+  orderBy: () => mockDbChain,
+  returningAll: () => mockDbChain,
+  execute: mockExecute,
+  executeTakeFirst: mockExecuteTakeFirst,
+};
+
+// Mock SQL template
+const mockSql = () => ({ execute: mockSqlExecute });
+
+// Setup module mocks BEFORE imports
+mock.module("../../../src/libs/cache", () => ({
+  redis: { get: mockRedisGet, setex: mockRedisSetex, keys: mockRedisKeys, del: mockRedisDel },
+}));
+mock.module("../../../src/libs/db/client", () => ({ db: mockDbChain }));
+mock.module("kysely", () => ({ sql: mockSql }));
+mock.module("../../../src/libs/logger", () => ({
+  logger: { info: () => {}, error: () => {}, warn: () => {}, debug: () => {} },
+}));
+```
+
+#### Testing Elysia Routes
+
+Use `app.handle()` instead of making real HTTP calls:
+```typescript
+function createTestApp() {
+  return new Elysia({ prefix: "/people" })
+    .derive(() => ({
+      user: { id: TEST_USER_ID, email: "test@example.com", name: "Test", avatar_url: null },
+    }))
+    .get("/", async ({ user, query, set }) => {
+      try {
+        const people = await mockPeopleService.getAll(user.id);
+        return { success: true, data: people };
+      } catch (error) {
+        set.status = 500;
+        return { success: false, error: "Internal server error" };
+      }
+    });
+}
+
+// In tests:
+it("should return all people", async () => {
+  const response = await app.handle(new Request("http://localhost/people"));
+  const data = await response.json();
+  expect(response.status).toBe(200);
+  expect(data.success).toBe(true);
+});
+```
+
+#### AAA Pattern (Arrange-Act-Assert)
+
+```typescript
+it("should return person when found", async () => {
+  // Arrange
+  mockExecuteTakeFirst.mockImplementation(() => Promise.resolve(mockPerson));
+  
+  // Act
+  const result = await service.getById(TEST_USER_ID, TEST_PERSON_ID);
+  
+  // Assert
+  expect(result).toEqual(mockPerson);
+});
+```
+
+#### Reset Mocks Before Each Test
+
+```typescript
+beforeEach(() => {
+  service = new PeopleService();
+  // Reset all mocks
+  mockRedisGet.mockReset();
+  mockExecute.mockReset();
+  // Set defaults
+  mockRedisGet.mockImplementation(() => Promise.resolve(null));
+  mockExecute.mockImplementation(() => Promise.resolve([]));
+});
+```
+
+#### Test Categories to Cover
+
+1. **Happy Path** - Normal successful operations
+2. **Error Handling** - Database errors, validation errors
+3. **Edge Cases** - Empty results, null values, special characters
+4. **Cache Behavior** - Cache hits, cache misses, cache invalidation
+5. **Input Validation** - Invalid UUIDs, missing fields, malformed data
+6. **Response Format** - Consistent success/error structure
+
+#### JSON Serialization in Cache Tests
+
+When testing cached data, remember JSON serialization converts Date to string:
+```typescript
+it("should return cached data when available", async () => {
+  mockRedisGet.mockImplementation(() => Promise.resolve(JSON.stringify(cachedPeople)));
+  
+  const result = await service.getAll(TEST_USER_ID);
+  
+  // Compare structure, not exact equality (dates become strings)
+  expect(result).toHaveLength(1);
+  expect(result[0].id).toEqual(mockPerson.id);
+});
+```
+
+#### Running Tests
+
+```bash
+# Run all tests
+bun test
+
+# Run specific test file
+bun test tests/modules/people/people.service.test.ts
+
+# Run tests in a directory
+bun test tests/modules/people
+
+# Run with timeout
+bun test --timeout 30000
+
+# Watch mode
+bun test --watch
+```
 
 ## Common Patterns
 
@@ -392,6 +665,8 @@ export const featureRoutes = new Elysia({ prefix: "/feature" })
 
 ### Database Query Pattern
 
+#### Basic Query
+
 ```typescript
 export class UserService {
   async getUserById(userId: string) {
@@ -410,23 +685,167 @@ export class UserService {
 }
 ```
 
-### Error Handling Pattern
+#### Optimized Multi-Table Query (JSON Aggregation)
+
+For fetching related data in a single query, use PostgreSQL JSON functions:
 
 ```typescript
-.post("/create", async ({ body, set }) => {
+async getFullProfile(userId: string, personId: string): Promise<PersonProfile | null> {
+  const query = sql<ProfileQueryResult>`
+    SELECT
+      row_to_json(p.*) as person,
+      COALESCE(
+        (SELECT json_agg(m.*) FROM memories m 
+         WHERE m.person_id = p.id AND m.user_id = ${userId}),
+        '[]'::json
+      ) as memories,
+      COALESCE(
+        (SELECT json_agg(pl.*) FROM planner pl 
+         WHERE pl.person_id = p.id AND pl.user_id = ${userId} 
+         AND pl.date >= CURRENT_DATE AND pl.completed = false),
+        '[]'::json
+      ) as upcoming_plans,
+      COALESCE(
+        (SELECT json_agg(w.*) FROM wishlist w 
+         WHERE w.person_id = p.id AND w.user_id = ${userId} 
+         AND w.purchased = false),
+        '[]'::json
+      ) as wishlist
+    FROM people p
+    WHERE p.id = ${personId} AND p.user_id = ${userId}
+  `;
+  
+  const result = await query.execute(db);
+  const row = result.rows[0];
+  
+  if (!row?.person) return null;
+  
+  return {
+    person: row.person,
+    memories: row.memories || [],
+    upcomingPlans: row.upcoming_plans || [],
+    wishlist: row.wishlist || [],
+  };
+}
+```
+
+#### Cascading Delete with CTEs
+
+For deleting a record and all related data in one atomic operation:
+
+```typescript
+async delete(userId: string, personId: string): Promise<boolean> {
+  const query = sql<{ deleted_id: string | null }>`
+    WITH delete_memories AS (
+      DELETE FROM memories 
+      WHERE person_id = ${personId} AND user_id = ${userId}
+    ),
+    delete_planner AS (
+      DELETE FROM planner 
+      WHERE person_id = ${personId} AND user_id = ${userId}
+    ),
+    delete_wishlist AS (
+      DELETE FROM wishlist 
+      WHERE person_id = ${personId} AND user_id = ${userId}
+    )
+    DELETE FROM people 
+    WHERE id = ${personId} AND user_id = ${userId}
+    RETURNING id as deleted_id
+  `;
+  
+  const result = await query.execute(db);
+  return result.rows[0]?.deleted_id !== null;
+}
+```
+
+#### Performance Tips
+
+- Use `json_agg` and `row_to_json` to fetch related data in one query
+- Use CTEs (`WITH`) for cascading operations
+- Add `COALESCE` with empty array default for nullable aggregations
+- Always include `user_id` in WHERE clauses for security
+- Use `CURRENT_DATE` for date comparisons in the database
+
+### Error Handling Pattern
+
+#### ServiceError Class
+
+Create a custom error class for service-level errors:
+```typescript
+export type ErrorCode = "NOT_FOUND" | "VALIDATION" | "DATABASE" | "INTERNAL" | "CACHE";
+
+export class ServiceError extends Error {
+  constructor(
+    message: string,
+    public readonly code: ErrorCode,
+    public readonly statusCode: number = 500
+  ) {
+    super(message);
+    this.name = "ServiceError";
+  }
+}
+```
+
+#### Service Layer Error Handling
+
+```typescript
+async getById(userId: string, personId: string): Promise<Person | undefined> {
   try {
-    const result = await service.create(body);
-    return { success: true, data: result };
+    const person = await db
+      .selectFrom("people")
+      .selectAll()
+      .where("id", "=", personId)
+      .where("user_id", "=", userId)
+      .executeTakeFirst();
+    return person;
   } catch (error) {
-    logger.error("Failed to create resource", error as Error, { body });
-    set.status = 500;
-    return {
-      success: false,
-      error: "Failed to create resource"
-    };
+    logger.error("Failed to get person by ID", error as Error, { userId, personId });
+    throw new ServiceError("Failed to retrieve person", "DATABASE", 500);
+  }
+}
+```
+
+#### Route Layer Error Handling
+
+```typescript
+// Helper function for consistent error responses
+function handleError(error: unknown, set: { status: number }): { success: false; error: string } {
+  if (error instanceof ServiceError) {
+    set.status = error.statusCode;
+    return { success: false, error: error.message };
+  }
+  logger.error("Unexpected error", error as Error);
+  set.status = 500;
+  return { success: false, error: "Internal server error" };
+}
+
+// Route handler
+.post("/", async ({ user, body, set }) => {
+  try {
+    // Validation
+    if (!body.name || body.name.length < 1) {
+      set.status = 400;
+      return { success: false, error: "Name is required" };
+    }
+    
+    const person = await service.create({ user_id: user.id, ...body });
+    set.status = 201;
+    return { success: true, data: person, message: "Person created successfully" };
+  } catch (error) {
+    return handleError(error, set);
   }
 })
 ```
+
+#### HTTP Status Codes by Error Type
+
+| Error Code | HTTP Status | Use Case |
+|------------|-------------|----------|
+| `NOT_FOUND` | 404 | Resource doesn't exist |
+| `VALIDATION` | 400 | Invalid input data |
+| `DATABASE` | 500 | Database operation failed |
+| `INTERNAL` | 500 | Unexpected server error |
+| `CACHE` | (don't fail) | Cache operations should not cause request failure |
 
 ## Remember
 

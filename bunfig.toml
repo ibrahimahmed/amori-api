@@ -3,3 +3,6 @@ auto = true
 
 [run]
 hot = true
+
+[test]
+preload = ["./tests/setup.ts"]
