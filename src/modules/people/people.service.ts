@@ -1,5 +1,40 @@
 import { db } from "../../libs/db/client";
-import type { PersonInsert, PersonUpdate, RelationType } from "../../libs/db/schema";
+import { sql } from "kysely";
+import type { Selectable } from "kysely";
+import type { PersonInsert, PersonUpdate, RelationType, Memory, PlannerEvent, WishlistItem } from "../../libs/db/schema";
+
+export interface PersonProfile {
+  person: Selectable<import("../../libs/db/schema").Person>;
+  memories: Selectable<Memory>[];
+  upcomingPlans: Selectable<PlannerEvent>[];
+  wishlist: Selectable<WishlistItem>[];
+  daysUntilBirthday: number | null;
+  daysUntilAnniversary: { days: number; years: number } | null;
+}
+
+export interface UpcomingBirthday {
+  person: Selectable<import("../../libs/db/schema").Person>;
+  daysUntil: number;
+}
+
+export interface UpcomingAnniversary {
+  person: Selectable<import("../../libs/db/schema").Person>;
+  daysUntil: number;
+  years: number;
+}
+
+export interface UpcomingMemory {
+  memory: Selectable<Memory>;
+  daysUntil: number;
+  years: number;
+}
+
+export interface UpcomingEvents {
+  birthdays: UpcomingBirthday[];
+  anniversaries: UpcomingAnniversary[];
+  upcomingMemories: UpcomingMemory[];
+  upcomingPlans: Selectable<PlannerEvent>[];
+}
 
 export class PeopleService {
   /**
@@ -48,87 +83,161 @@ export class PeopleService {
   }
 
   /**
-   * Delete a person
+   * Delete a person and all associated data (memories, plans, wishlist)
+   * Uses single query with CTEs for optimal performance
    */
   async delete(userId: string, personId: string) {
-    const result = await db
-      .deleteFrom("people")
-      .where("id", "=", personId)
-      .where("user_id", "=", userId)
-      .executeTakeFirst();
-
-    return result.numDeletedRows > 0;
+    const result = await sql<{ deleted_id: string | null }>`
+      WITH
+        delete_memories AS (
+          DELETE FROM memories WHERE user_id = ${userId} AND person_id = ${personId}
+        ),
+        delete_planner AS (
+          DELETE FROM planner WHERE user_id = ${userId} AND person_id = ${personId}
+        ),
+        delete_wishlist AS (
+          DELETE FROM wishlist WHERE user_id = ${userId} AND person_id = ${personId}
+        ),
+        delete_person AS (
+          DELETE FROM people WHERE id = ${personId} AND user_id = ${userId} RETURNING id
+        )
+      SELECT id as deleted_id FROM delete_person
+    `.execute(db);
+    return result.rows.length > 0 && result.rows[0].deleted_id !== null;
   }
 
   /**
-   * Get upcoming birthdays
+   * Get upcoming events: birthdays, anniversaries, memory anniversaries, and upcoming plans
+   * Uses single query with JSON aggregation for optimal performance
    */
-  async getUpcomingBirthdays(userId: string, daysAhead: number = 30) {
-    // Get all people with birthdays and filter in application
-    const people = await db
-      .selectFrom("people")
-      .selectAll()
-      .where("user_id", "=", userId)
-      .where("birthday", "is not", null)
-      .execute();
-
+  async getUpcomingEvents(userId: string, daysAhead: number = 30): Promise<UpcomingEvents> {
     const today = new Date();
-    const upcoming: Array<{ person: (typeof people)[0]; daysUntil: number }> = [];
-
-    for (const person of people) {
-      if (!person.birthday) continue;
-
-      const birthday = new Date(person.birthday);
-      const thisYearBirthday = new Date(today.getFullYear(), birthday.getMonth(), birthday.getDate());
-
-      // If birthday has passed this year, check next year
-      if (thisYearBirthday < today) {
-        thisYearBirthday.setFullYear(thisYearBirthday.getFullYear() + 1);
-      }
-
-      const daysUntil = Math.ceil((thisYearBirthday.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-      if (daysUntil <= daysAhead) {
-        upcoming.push({ person, daysUntil });
-      }
-    }
-
-    return upcoming.sort((a, b) => a.daysUntil - b.daysUntil);
+    const futureDate = new Date(today);
+    futureDate.setDate(futureDate.getDate() + daysAhead);
+    const result = await sql<{
+      people: Selectable<import("../../libs/db/schema").Person>[];
+      memories: Selectable<Memory>[];
+      upcoming_plans: Selectable<PlannerEvent>[];
+    }>`
+      SELECT
+        COALESCE((SELECT json_agg(p.*) FROM people p WHERE p.user_id = ${userId}), '[]'::json) as people,
+        COALESCE((SELECT json_agg(m.*) FROM memories m WHERE m.user_id = ${userId} AND m.date IS NOT NULL), '[]'::json) as memories,
+        COALESCE(
+          (SELECT json_agg(pl.* ORDER BY pl.date ASC)
+           FROM planner pl WHERE pl.user_id = ${userId} AND pl.date >= ${today} AND pl.date <= ${futureDate} AND pl.completed = false),
+          '[]'::json
+        ) as upcoming_plans
+    `.execute(db);
+    const data = result.rows[0];
+    const people = data?.people ?? [];
+    const memories = data?.memories ?? [];
+    const upcomingPlans = data?.upcoming_plans ?? [];
+    const calcDays = (date: Date | string) => this.calculateDaysUntil(new Date(date), today);
+    const calcYears = (date: Date | string) => this.calculateYears(new Date(date), today);
+    const { birthdays, anniversaries } = people.reduce<{
+      birthdays: UpcomingBirthday[];
+      anniversaries: UpcomingAnniversary[];
+    }>(
+      (acc, person) => {
+        if (person.birthday) {
+          const daysUntil = calcDays(person.birthday);
+          if (daysUntil <= daysAhead) acc.birthdays.push({ person, daysUntil });
+        }
+        if (person.anniversary) {
+          const daysUntil = calcDays(person.anniversary);
+          if (daysUntil <= daysAhead) acc.anniversaries.push({ person, daysUntil, years: calcYears(person.anniversary) });
+        }
+        return acc;
+      },
+      { birthdays: [], anniversaries: [] }
+    );
+    const upcomingMemories = memories
+      .filter((m) => m.date && calcYears(m.date) > 0 && calcDays(m.date) <= daysAhead)
+      .map((memory) => ({ memory, daysUntil: calcDays(memory.date!), years: calcYears(memory.date!) }));
+    const sortByDays = <T extends { daysUntil: number }>(a: T, b: T) => a.daysUntil - b.daysUntil;
+    return {
+      birthdays: birthdays.sort(sortByDays),
+      anniversaries: anniversaries.sort(sortByDays),
+      upcomingMemories: upcomingMemories.sort(sortByDays),
+      upcomingPlans,
+    };
   }
 
   /**
-   * Get upcoming anniversaries
+   * Calculate days until a recurring date (birthday/anniversary)
    */
-  async getUpcomingAnniversaries(userId: string, daysAhead: number = 30) {
-    const people = await db
-      .selectFrom("people")
-      .selectAll()
-      .where("user_id", "=", userId)
-      .where("anniversary", "is not", null)
-      .execute();
-
-    const today = new Date();
-    const upcoming: Array<{ person: (typeof people)[0]; daysUntil: number; years: number }> = [];
-
-    for (const person of people) {
-      if (!person.anniversary) continue;
-
-      const anniversary = new Date(person.anniversary);
-      const thisYearAnniversary = new Date(today.getFullYear(), anniversary.getMonth(), anniversary.getDate());
-
-      if (thisYearAnniversary < today) {
-        thisYearAnniversary.setFullYear(thisYearAnniversary.getFullYear() + 1);
-      }
-
-      const daysUntil = Math.ceil((thisYearAnniversary.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-      const years = thisYearAnniversary.getFullYear() - anniversary.getFullYear();
-
-      if (daysUntil <= daysAhead) {
-        upcoming.push({ person, daysUntil, years });
-      }
+  private calculateDaysUntil(date: Date, today: Date): number {
+    const d = new Date(date);
+    const thisYear = new Date(today.getFullYear(), d.getMonth(), d.getDate());
+    if (thisYear < today) {
+      thisYear.setFullYear(thisYear.getFullYear() + 1);
     }
+    return Math.ceil((thisYear.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  }
 
-    return upcoming.sort((a, b) => a.daysUntil - b.daysUntil);
+  /**
+   * Calculate years since a date
+   */
+  private calculateYears(date: Date, today: Date): number {
+    const d = new Date(date);
+    const thisYear = new Date(today.getFullYear(), d.getMonth(), d.getDate());
+    if (thisYear < today) {
+      thisYear.setFullYear(thisYear.getFullYear() + 1);
+    }
+    return thisYear.getFullYear() - d.getFullYear();
+  }
+
+  /**
+   * Get full profile of a person including memories, upcoming plans, and wishlist
+   * Uses single query with JSON aggregation for optimal performance
+   */
+  async getFullProfile(userId: string, personId: string): Promise<PersonProfile | null> {
+    const now = new Date();
+    const result = await sql<{
+      person: Selectable<import("../../libs/db/schema").Person> | null;
+      memories: Selectable<Memory>[];
+      upcoming_plans: Selectable<PlannerEvent>[];
+      wishlist: Selectable<WishlistItem>[];
+    }>`
+      SELECT 
+        (SELECT row_to_json(p.*) FROM people p WHERE p.id = ${personId} AND p.user_id = ${userId}) as person,
+        COALESCE(
+          (SELECT json_agg(m.* ORDER BY m.date DESC NULLS LAST, m.created_at DESC)
+           FROM memories m WHERE m.user_id = ${userId} AND m.person_id = ${personId}),
+          '[]'::json
+        ) as memories,
+        COALESCE(
+          (SELECT json_agg(pl.* ORDER BY pl.date ASC)
+           FROM planner pl WHERE pl.user_id = ${userId} AND pl.person_id = ${personId} 
+           AND pl.date >= ${now} AND pl.completed = false),
+          '[]'::json
+        ) as upcoming_plans,
+        COALESCE(
+          (SELECT json_agg(w.* ORDER BY w.priority DESC, w.created_at DESC)
+           FROM wishlist w WHERE w.user_id = ${userId} AND w.person_id = ${personId}),
+          '[]'::json
+        ) as wishlist
+    `.execute(db);
+    const data = result.rows[0];
+    if (!data?.person) {
+      return null;
+    }
+    const person = data.person;
+    const daysUntilBirthday = person.birthday ? this.calculateDaysUntil(new Date(person.birthday), now) : null;
+    const daysUntilAnniversary = person.anniversary
+      ? {
+          days: this.calculateDaysUntil(new Date(person.anniversary), now),
+          years: this.calculateYears(new Date(person.anniversary), now),
+        }
+      : null;
+    return {
+      person,
+      memories: data.memories,
+      upcomingPlans: data.upcoming_plans,
+      wishlist: data.wishlist,
+      daysUntilBirthday,
+      daysUntilAnniversary,
+    };
   }
 }
 

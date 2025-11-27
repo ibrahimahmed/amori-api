@@ -1,0 +1,194 @@
+{
+  "info": {
+    "name": "Amori People API",
+    "_postman_id": "amori-people-collection-v1",
+    "description": "People/Relationships management endpoints for Amori API. Manage your relationships, track birthdays, anniversaries, and get comprehensive profiles.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "person_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "People",
+      "item": [
+        {
+          "name": "Get All People",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/people",
+              "host": ["{{base_url}}"],
+              "path": ["people"],
+              "query": [
+                {
+                  "key": "relation_type",
+                  "value": "partner",
+                  "description": "Filter by relation type: partner, spouse, parent, child, sibling, friend, colleague, mentor, other",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get all relationships for the authenticated user.\n\n**Optional Query Parameters:**\n- `relation_type` - Filter by relationship type\n\n**Relation Types:**\n- partner\n- spouse\n- parent\n- child\n- sibling\n- friend\n- colleague\n- mentor\n- other\n\n**Returns:**\n- Array of people sorted by name"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Upcoming Events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/people/upcoming?days=30",
+              "host": ["{{base_url}}"],
+              "path": ["people", "upcoming"],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "30",
+                  "description": "Number of days to look ahead (1-365, default: 30)"
+                }
+              ]
+            },
+            "description": "Get all upcoming events in a single optimized call.\n\n**Query Parameters:**\n- `days` - Number of days to look ahead (1-365, default: 30)\n\n**Returns:**\n- `birthdays` - People with upcoming birthdays (with daysUntil)\n- `anniversaries` - People with upcoming anniversaries (with daysUntil, years)\n- `upcomingMemories` - Memory anniversaries coming up (e.g., \"1 year since first date\")\n- `upcomingPlans` - Scheduled events within the date range\n\n**Optimized:**\nSingle database query using PostgreSQL JSON aggregation for maximum performance."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Person Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.data && response.data.person) {",
+                  "        pm.collectionVariables.set('person_id', response.data.person.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/people/{{person_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["people", "{{person_id}}"]
+            },
+            "description": "Get full profile of a person including all associated data.\n\n**Path Parameters:**\n- `id` - Person UUID\n\n**Returns:**\n- `person` - Basic person information\n- `memories` - All memories associated with this person\n- `upcomingPlans` - Future incomplete plans for this person\n- `wishlist` - Gift ideas for this person\n- `daysUntilBirthday` - Days until their next birthday (null if no birthday set)\n- `daysUntilAnniversary` - Object with days and years until next anniversary\n\n**Optimized:**\nSingle database query using PostgreSQL JSON aggregation."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Person",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.data && response.data.id) {",
+                  "        pm.collectionVariables.set('person_id', response.data.id);",
+                  "        console.log('Person ID saved:', response.data.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jane Doe\",\n  \"relation_type\": \"partner\",\n  \"birthday\": \"1995-06-15\",\n  \"anniversary\": \"2020-02-14\",\n  \"notes\": \"Loves hiking and coffee\",\n  \"phone\": \"+1234567890\",\n  \"email\": \"jane@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/people",
+              "host": ["{{base_url}}"],
+              "path": ["people"]
+            },
+            "description": "Add a new relationship/person.\n\n**Required Fields:**\n- `name` - Person's name (min 1 character)\n- `relation_type` - Type of relationship\n\n**Optional Fields:**\n- `birthday` - Date string (YYYY-MM-DD)\n- `anniversary` - Date string (YYYY-MM-DD)\n- `notes` - Additional notes\n- `avatar_url` - URL to avatar image\n- `phone` - Phone number\n- `email` - Email address\n\n**Relation Types:**\n- partner, spouse, parent, child, sibling, friend, colleague, mentor, other\n\n**Returns:**\n- Created person object with generated ID"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Person",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jane Smith\",\n  \"notes\": \"Updated notes - now also loves tea\",\n  \"phone\": \"+0987654321\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/people/{{person_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["people", "{{person_id}}"]
+            },
+            "description": "Update an existing person/relationship.\n\n**Path Parameters:**\n- `id` - Person UUID\n\n**Optional Fields (all fields are optional):**\n- `name` - Person's name\n- `relation_type` - Type of relationship\n- `birthday` - Date string (YYYY-MM-DD)\n- `anniversary` - Date string (YYYY-MM-DD)\n- `notes` - Additional notes\n- `avatar_url` - URL to avatar image\n- `phone` - Phone number\n- `email` - Email address\n\n**Returns:**\n- Updated person object\n\n**Errors:**\n- 404 if person not found or doesn't belong to user"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Person",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/people/{{person_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["people", "{{person_id}}"]
+            },
+            "description": "Delete a person and ALL associated data.\n\n**Path Parameters:**\n- `id` - Person UUID\n\n**Cascade Deletes:**\n- All memories associated with this person\n- All planner events for this person\n- All wishlist items for this person\n- The person record itself\n\n**⚠️ Warning:**\nThis action is irreversible. All associated data will be permanently deleted.\n\n**Optimized:**\nSingle database query using PostgreSQL CTEs for atomic deletion.\n\n**Returns:**\n- 204 No Content on success\n- 404 if person not found"
+          },
+          "response": []
+        }
+      ],
+      "description": "Manage your relationships and people. All endpoints require authentication."
+    }
+  ]
+}
+

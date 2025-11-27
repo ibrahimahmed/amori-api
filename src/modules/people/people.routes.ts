@@ -28,12 +28,12 @@ export const peopleRoutes = new Elysia({ prefix: "/people" })
       },
     }
   )
-  // Get upcoming birthdays
+  // Get upcoming birthdays and anniversaries in one call
   .get(
-    "/birthdays",
+    "/upcoming",
     async ({ user, query }) => {
-      const birthdays = await peopleService.getUpcomingBirthdays(user.id, query.days || 30);
-      return { success: true, data: birthdays };
+      const events = await peopleService.getUpcomingEvents(user.id, query.days || 30);
+      return { success: true, data: events };
     },
     {
       query: t.Object({
@@ -41,41 +41,22 @@ export const peopleRoutes = new Elysia({ prefix: "/people" })
       }),
       detail: {
         tags: ["people"],
-        summary: "Get upcoming birthdays",
-        description: "Get people with upcoming birthdays",
+        summary: "Get upcoming events",
+        description: "Get upcoming birthdays and anniversaries in a single optimized call",
         security: [{ bearerAuth: [] }],
       },
     }
   )
-  // Get upcoming anniversaries
-  .get(
-    "/anniversaries",
-    async ({ user, query }) => {
-      const anniversaries = await peopleService.getUpcomingAnniversaries(user.id, query.days || 30);
-      return { success: true, data: anniversaries };
-    },
-    {
-      query: t.Object({
-        days: t.Optional(t.Number({ minimum: 1, maximum: 365 })),
-      }),
-      detail: {
-        tags: ["people"],
-        summary: "Get upcoming anniversaries",
-        description: "Get people with upcoming anniversaries",
-        security: [{ bearerAuth: [] }],
-      },
-    }
-  )
-  // Get single person
+  // Get single person with full profile
   .get(
     "/:id",
     async ({ user, params, set }) => {
-      const person = await peopleService.getById(user.id, params.id);
-      if (!person) {
+      const profile = await peopleService.getFullProfile(user.id, params.id);
+      if (!profile) {
         set.status = 404;
         return { success: false, error: "Person not found" };
       }
-      return { success: true, data: person };
+      return { success: true, data: profile };
     },
     {
       params: t.Object({
@@ -83,8 +64,8 @@ export const peopleRoutes = new Elysia({ prefix: "/people" })
       }),
       detail: {
         tags: ["people"],
-        summary: "Get person by ID",
-        description: "Get a specific relationship by ID",
+        summary: "Get person profile",
+        description: "Get full profile of a person including memories, upcoming plans, and wishlist",
         security: [{ bearerAuth: [] }],
       },
     }
@@ -191,4 +172,3 @@ export const peopleRoutes = new Elysia({ prefix: "/people" })
       },
     }
   );
-

@@ -15,6 +15,7 @@ export interface AuthUser {
  * and attaches the user to the request context
  */
 export const authMiddleware = new Elysia({ name: "auth" }).derive(
+  { as: "global" },
   async ({ request, set }): Promise<{ user: AuthUser }> => {
     const authHeader = request.headers.get("authorization");
 
