@@ -1,0 +1,301 @@
+{
+  "info": {
+    "name": "Amori Planner API",
+    "_postman_id": "amori-planner-collection-v1",
+    "description": "Planner/Events management endpoints for Amori API. Manage your schedule, reminders, and important dates.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "event_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "person_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Planner",
+      "item": [
+        {
+          "name": "Get All Events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/planner",
+              "host": ["{{base_url}}"],
+              "path": ["planner"],
+              "query": [
+                {
+                  "key": "event_type",
+                  "value": "birthday",
+                  "description": "Filter by event type",
+                  "disabled": true
+                },
+                {
+                  "key": "person_id",
+                  "value": "{{person_id}}",
+                  "description": "Filter by person ID",
+                  "disabled": true
+                },
+                {
+                  "key": "start_date",
+                  "value": "2024-01-01",
+                  "description": "Filter by start date",
+                  "disabled": true
+                },
+                {
+                  "key": "end_date",
+                  "value": "2024-12-31",
+                  "description": "Filter by end date",
+                  "disabled": true
+                },
+                {
+                  "key": "completed",
+                  "value": "false",
+                  "description": "Filter by completion status",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get all planner events with optional filters.\n\n**Optional Query Parameters:**\n- `event_type`: Filter by event type (birthday, anniversary, date, meeting, call, gift, trip, other)\n- `person_id`: Filter by person ID\n- `start_date`: Filter events starting after this date\n- `end_date`: Filter events ending before this date\n- `completed`: Filter by completion status (true/false)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Upcoming Events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/planner/upcoming?days=7",
+              "host": ["{{base_url}}"],
+              "path": ["planner", "upcoming"],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "7",
+                  "description": "Number of days to look ahead (default: 7)"
+                }
+              ]
+            },
+            "description": "Get events coming up in the next N days.\n\n**Query Parameters:**\n- `days`: Number of days to look ahead (1-365, default: 7)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Overdue Events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/planner/overdue",
+              "host": ["{{base_url}}"],
+              "path": ["planner", "overdue"]
+            },
+            "description": "Get events that are past due and not completed."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Calendar Events (Month)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/planner/calendar/2024/6",
+              "host": ["{{base_url}}"],
+              "path": ["planner", "calendar", "2024", "6"]
+            },
+            "description": "Get events for a specific month (calendar view).\n\n**Path Parameters:**\n- `year`: Year (e.g., 2024)\n- `month`: Month (1-12)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Events by Date",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/planner/date/2024-06-15",
+              "host": ["{{base_url}}"],
+              "path": ["planner", "date", "2024-06-15"]
+            },
+            "description": "Get events for a specific date.\n\n**Path Parameters:**\n- `date`: Date string (YYYY-MM-DD)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Planner Statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/planner/stats",
+              "host": ["{{base_url}}"],
+              "path": ["planner", "stats"]
+            },
+            "description": "Get statistics about planned events (total, completed, pending, breakdown by type)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Event by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.data && response.data.id) {",
+                  "        pm.collectionVariables.set('event_id', response.data.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/planner/{{event_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["planner", "{{event_id}}"]
+            },
+            "description": "Get a specific planner event by ID.\n\n**Path Parameters:**\n- `id`: Event UUID"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Event",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.data && response.data.id) {",
+                  "        pm.collectionVariables.set('event_id', response.data.id);",
+                  "        console.log('Event ID saved:', response.data.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_type\": \"date\",\n  \"title\": \"Dinner Date\",\n  \"description\": \"Romantic dinner at Italian restaurant\",\n  \"date\": \"2024-06-15T19:00:00.000Z\",\n  \"location\": \"Luigi's Place\",\n  \"person_id\": \"{{person_id}}\",\n  \"reminder_at\": \"2024-06-15T18:00:00.000Z\",\n  \"notes\": \"Bring flowers\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/planner",
+              "host": ["{{base_url}}"],
+              "path": ["planner"]
+            },
+            "description": "Create a new planner event.\n\n**Required Fields:**\n- `event_type`: Type of event (birthday, anniversary, date, meeting, call, gift, trip, other)\n- `title`: Event title\n- `date`: Event date (ISO string)\n\n**Optional Fields:**\n- `description`: Event description\n- `person_id`: Associated person ID\n- `location`: Event location\n- `reminder_at`: Reminder date/time (ISO string)\n- `notes`: Additional notes"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Event",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Dinner Date (Updated)\",\n  \"location\": \"Mario's Place\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/planner/{{event_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["planner", "{{event_id}}"]
+            },
+            "description": "Update a planner event.\n\n**Path Parameters:**\n- `id`: Event UUID\n\n**Body:**\nAny of the fields from Create Event."
+          },
+          "response": []
+        },
+        {
+          "name": "Mark Event Completed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"completed\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/planner/{{event_id}}/complete",
+              "host": ["{{base_url}}"],
+              "path": ["planner", "{{event_id}}", "complete"]
+            },
+            "description": "Mark an event as completed or incomplete.\n\n**Path Parameters:**\n- `id`: Event UUID\n\n**Body:**\n- `completed`: boolean (default true)"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Event",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/planner/{{event_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["planner", "{{event_id}}"]
+            },
+            "description": "Delete a planner event.\n\n**Path Parameters:**\n- `id`: Event UUID"
+          },
+          "response": []
+        }
+      ],
+      "description": "Manage your planner events."
+    }
+  ]
+}
