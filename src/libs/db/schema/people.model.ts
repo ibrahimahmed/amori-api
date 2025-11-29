@@ -19,6 +19,7 @@ export interface Person {
   birthday: Date | null;
   anniversary: Date | null;
   notes: string | null;
+  person_notes: string[] | null; // Array of notes for the person
   avatar_url: string | null;
   phone: string | null;
   email: string | null;
@@ -34,6 +35,7 @@ export interface PersonInsert {
   birthday?: Date | null;
   anniversary?: Date | null;
   notes?: string | null;
+  person_notes?: string[] | null;
   avatar_url?: string | null;
   phone?: string | null;
   email?: string | null;
@@ -45,6 +47,7 @@ export interface PersonUpdate {
   birthday?: Date | null;
   anniversary?: Date | null;
   notes?: string | null;
+  person_notes?: string[] | null;
   avatar_url?: string | null;
   phone?: string | null;
   email?: string | null;
