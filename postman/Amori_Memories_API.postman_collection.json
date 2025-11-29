@@ -1,0 +1,328 @@
+{
+	"info": {
+		"_postman_id": "c1a2b3c4-d5e6-f7a8-b9c0-d1e2f3a4b5c6",
+		"name": "Amori Memories API",
+		"description": "Collection for Amori Memories module endpoints",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Get All Memories",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/memories?person_id=&start_date=&end_date=&tags=&favorites=",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"memories"
+					],
+					"query": [
+						{
+							"key": "person_id",
+							"value": "",
+							"description": "Filter by person ID"
+						},
+						{
+							"key": "start_date",
+							"value": "",
+							"description": "Filter by start date (ISO string)"
+						},
+						{
+							"key": "end_date",
+							"value": "",
+							"description": "Filter by end date (ISO string)"
+						},
+						{
+							"key": "tags",
+							"value": "",
+							"description": "Filter by tags (comma separated)"
+						},
+						{
+							"key": "favorites",
+							"value": "",
+							"description": "Filter by favorites (true/false)"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Favorite Memories",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/memories/favorites",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"memories",
+						"favorites"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get All Tags",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/memories/tags",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"memories",
+						"tags"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Memory by ID",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/memories/:id",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"memories",
+						":id"
+					],
+					"variable": [
+						{
+							"key": "id",
+							"value": ""
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Create Memory",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"title\": \"My Memory\",\n    \"description\": \"A beautiful memory\",\n    \"date\": \"2023-01-01T00:00:00.000Z\",\n    \"tags\": [\"happy\", \"event\"],\n    \"is_favorite\": false,\n    \"person_id\": \"OPTIONAL_PERSON_UUID\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/memories",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"memories"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Update Memory",
+			"request": {
+				"method": "PATCH",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"title\": \"Updated Title\",\n    \"description\": \"Updated description\",\n    \"is_favorite\": true\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/memories/:id",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"memories",
+						":id"
+					],
+					"variable": [
+						{
+							"key": "id",
+							"value": ""
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Toggle Favorite",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/memories/:id/favorite",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"memories",
+						":id",
+						"favorite"
+					],
+					"variable": [
+						{
+							"key": "id",
+							"value": ""
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Upload Media",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "file",
+							"type": "file",
+							"description": "Media file to upload"
+						}
+					]
+				},
+				"url": {
+					"raw": "{{baseUrl}}/memories/:id/media",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"memories",
+						":id",
+						"media"
+					],
+					"variable": [
+						{
+							"key": "id",
+							"value": ""
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Remove Media",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"url\": \"https://example.com/image.jpg\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/memories/:id/media",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"memories",
+						":id",
+						"media"
+					],
+					"variable": [
+						{
+							"key": "id",
+							"value": ""
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Delete Memory",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/memories/:id",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"memories",
+						":id"
+					],
+					"variable": [
+						{
+							"key": "id",
+							"value": ""
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{accessToken}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3000/api",
+			"type": "string"
+		}
+	]
+}

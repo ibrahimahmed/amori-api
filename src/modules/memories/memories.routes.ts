@@ -1,21 +1,45 @@
 import { Elysia, t } from "elysia";
 import { authMiddleware } from "../auth";
-import { memoriesService } from "./memories.service";
+import { memoriesService, ServiceError } from "./memories.service";
+import { generalRateLimit } from "../../middlewares/rateLimit";
+import { logger } from "../../libs/logger";
+
+/**
+ * Handle service errors and return appropriate HTTP response
+ */
+function handleError(
+  error: unknown,
+  set: { status?: number | string },
+  context: { userId?: string; operation: string }
+): { success: false; error: string } {
+  if (error instanceof ServiceError) {
+    set.status = error.statusCode;
+    return { success: false, error: error.message };
+  }
+  logger.error(`Unexpected error in ${context.operation}`, error as Error, { userId: context.userId });
+  set.status = 500;
+  return { success: false, error: "Internal server error" };
+}
 
 export const memoriesRoutes = new Elysia({ prefix: "/memories" })
   .use(authMiddleware)
+  .use(generalRateLimit)
   // Get all memories
   .get(
     "/",
-    async ({ user, query }) => {
-      const memories = await memoriesService.getAll(user.id, {
-        personId: query.person_id,
-        startDate: query.start_date ? new Date(query.start_date) : undefined,
-        endDate: query.end_date ? new Date(query.end_date) : undefined,
-        tags: query.tags?.split(",").filter(Boolean),
-        isFavorite: query.favorites ? query.favorites === "true" : undefined,
-      });
-      return { success: true, data: memories };
+    async ({ user, query, set }) => {
+      try {
+        const memories = await memoriesService.getAll(user.id, {
+          personId: query.person_id,
+          startDate: query.start_date ? new Date(query.start_date) : undefined,
+          endDate: query.end_date ? new Date(query.end_date) : undefined,
+          tags: query.tags?.split(",").filter(Boolean),
+          isFavorite: query.favorites ? query.favorites === "true" : undefined,
+        });
+        return { success: true, data: memories };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "memories.getAll" });
+      }
     },
     {
       query: t.Object({
@@ -36,9 +60,13 @@ export const memoriesRoutes = new Elysia({ prefix: "/memories" })
   // Get favorite memories
   .get(
     "/favorites",
-    async ({ user }) => {
-      const memories = await memoriesService.getFavorites(user.id);
-      return { success: true, data: memories };
+    async ({ user, set }) => {
+      try {
+        const memories = await memoriesService.getFavorites(user.id);
+        return { success: true, data: memories };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "memories.getFavorites" });
+      }
     },
     {
       detail: {
@@ -52,9 +80,13 @@ export const memoriesRoutes = new Elysia({ prefix: "/memories" })
   // Get all tags
   .get(
     "/tags",
-    async ({ user }) => {
-      const tags = await memoriesService.getAllTags(user.id);
-      return { success: true, data: tags };
+    async ({ user, set }) => {
+      try {
+        const tags = await memoriesService.getAllTags(user.id);
+        return { success: true, data: tags };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "memories.getAllTags" });
+      }
     },
     {
       detail: {
@@ -69,12 +101,16 @@ export const memoriesRoutes = new Elysia({ prefix: "/memories" })
   .get(
     "/:id",
     async ({ user, params, set }) => {
-      const memory = await memoriesService.getById(user.id, params.id);
-      if (!memory) {
-        set.status = 404;
-        return { success: false, error: "Memory not found" };
+      try {
+        const memory = await memoriesService.getById(user.id, params.id);
+        if (!memory) {
+          set.status = 404;
+          return { success: false, error: "Memory not found" };
+        }
+        return { success: true, data: memory };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "memories.getById" });
       }
-      return { success: true, data: memory };
     },
     {
       params: t.Object({
@@ -91,19 +127,24 @@ export const memoriesRoutes = new Elysia({ prefix: "/memories" })
   // Create memory
   .post(
     "/",
-    async ({ user, body }) => {
-      const memory = await memoriesService.create({
-        user_id: user.id,
-        person_id: body.person_id,
-        title: body.title,
-        description: body.description,
-        date: body.date ? new Date(body.date) : null,
-        media_urls: body.media_urls,
-        tags: body.tags,
-        location: body.location,
-        is_favorite: body.is_favorite || false,
-      });
-      return { success: true, data: memory };
+    async ({ user, body, set }) => {
+      try {
+        const memory = await memoriesService.create({
+          user_id: user.id,
+          person_id: body.person_id,
+          title: body.title,
+          description: body.description,
+          date: body.date ? new Date(body.date) : null,
+          media_urls: body.media_urls,
+          tags: body.tags,
+          location: body.location,
+          is_favorite: body.is_favorite || false,
+        });
+        set.status = 201;
+        return { success: true, data: memory };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "memories.create" });
+      }
     },
     {
       body: t.Object({
@@ -128,21 +169,25 @@ export const memoriesRoutes = new Elysia({ prefix: "/memories" })
   .patch(
     "/:id",
     async ({ user, params, body, set }) => {
-      const memory = await memoriesService.update(user.id, params.id, {
-        person_id: body.person_id,
-        title: body.title,
-        description: body.description,
-        date: body.date ? new Date(body.date) : undefined,
-        media_urls: body.media_urls,
-        tags: body.tags,
-        location: body.location,
-        is_favorite: body.is_favorite,
-      });
-      if (!memory) {
-        set.status = 404;
-        return { success: false, error: "Memory not found" };
+      try {
+        const memory = await memoriesService.update(user.id, params.id, {
+          person_id: body.person_id,
+          title: body.title,
+          description: body.description,
+          date: body.date ? new Date(body.date) : undefined,
+          media_urls: body.media_urls,
+          tags: body.tags,
+          location: body.location,
+          is_favorite: body.is_favorite,
+        });
+        if (!memory) {
+          set.status = 404;
+          return { success: false, error: "Memory not found" };
+        }
+        return { success: true, data: memory };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "memories.update" });
       }
-      return { success: true, data: memory };
     },
     {
       params: t.Object({
@@ -170,12 +215,16 @@ export const memoriesRoutes = new Elysia({ prefix: "/memories" })
   .post(
     "/:id/favorite",
     async ({ user, params, set }) => {
-      const memory = await memoriesService.toggleFavorite(user.id, params.id);
-      if (!memory) {
-        set.status = 404;
-        return { success: false, error: "Memory not found" };
+      try {
+        const memory = await memoriesService.toggleFavorite(user.id, params.id);
+        if (!memory) {
+          set.status = 404;
+          return { success: false, error: "Memory not found" };
+        }
+        return { success: true, data: memory };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "memories.toggleFavorite" });
       }
-      return { success: true, data: memory };
     },
     {
       params: t.Object({
@@ -193,19 +242,23 @@ export const memoriesRoutes = new Elysia({ prefix: "/memories" })
   .post(
     "/:id/media",
     async ({ user, params, body, set }) => {
-      const file = body.file;
-      if (!file) {
-        set.status = 400;
-        return { success: false, error: "No file provided" };
-      }
+      try {
+        const file = body.file;
+        if (!file) {
+          set.status = 400;
+          return { success: false, error: "No file provided" };
+        }
 
-      const url = await memoriesService.uploadMedia(user.id, params.id, file);
-      if (!url) {
-        set.status = 404;
-        return { success: false, error: "Memory not found or upload failed" };
-      }
+        const url = await memoriesService.uploadMedia(user.id, params.id, file);
+        if (!url) {
+          set.status = 404;
+          return { success: false, error: "Memory not found or upload failed" };
+        }
 
-      return { success: true, data: { url } };
+        return { success: true, data: { url } };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "memories.uploadMedia" });
+      }
     },
     {
       params: t.Object({
@@ -226,12 +279,16 @@ export const memoriesRoutes = new Elysia({ prefix: "/memories" })
   .delete(
     "/:id/media",
     async ({ user, params, body, set }) => {
-      const success = await memoriesService.removeMedia(user.id, params.id, body.url);
-      if (!success) {
-        set.status = 404;
-        return { success: false, error: "Memory not found" };
+      try {
+        const success = await memoriesService.removeMedia(user.id, params.id, body.url);
+        if (!success) {
+          set.status = 404;
+          return { success: false, error: "Memory not found" };
+        }
+        return { success: true };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "memories.removeMedia" });
       }
-      return { success: true };
     },
     {
       params: t.Object({
@@ -252,13 +309,17 @@ export const memoriesRoutes = new Elysia({ prefix: "/memories" })
   .delete(
     "/:id",
     async ({ user, params, set }) => {
-      const deleted = await memoriesService.delete(user.id, params.id);
-      if (!deleted) {
-        set.status = 404;
-        return { success: false, error: "Memory not found" };
+      try {
+        const deleted = await memoriesService.delete(user.id, params.id);
+        if (!deleted) {
+          set.status = 404;
+          return { success: false, error: "Memory not found" };
+        }
+        set.status = 204;
+        return null;
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "memories.delete" });
       }
-      set.status = 204;
-      return null;
     },
     {
       params: t.Object({
@@ -272,4 +333,3 @@ export const memoriesRoutes = new Elysia({ prefix: "/memories" })
       },
     }
   );
-
