@@ -1,6 +1,24 @@
 import { db } from "../../libs/db/client";
-import type { PlannerEventInsert, PlannerEventUpdate, EventType } from "../../libs/db/schema";
+import type { PlannerEventInsert, PlannerEventUpdate, EventType, PlannerEvent } from "../../libs/db/schema";
 import { logger } from "../../libs/logger";
+import { redis } from "../../libs/cache";
+import type { Selectable } from "kysely";
+
+/** Cache TTL in seconds */
+const CACHE_TTL = {
+  PLANNER_LIST: 300, // 5 minutes
+  PLANNER_STATS: 300, // 5 minutes
+  UPCOMING: 600, // 10 minutes
+} as const;
+
+/** Cache key patterns */
+const CACHE_KEYS = {
+  list: (userId: string) => `planner:list:${userId}`,
+  upcoming: (userId: string, days: number) => `planner:upcoming:${userId}:${days}`,
+  overdue: (userId: string) => `planner:overdue:${userId}`,
+  stats: (userId: string) => `planner:stats:${userId}`,
+  userPattern: (userId: string) => `planner:*:${userId}*`,
+} as const;
 
 export class ServiceError extends Error {
   constructor(
@@ -23,10 +41,64 @@ export interface PlannerFilters {
 
 export class PlannerService {
   /**
+   * Get cached data or fetch from source
+   */
+  private async getFromCache<T>(key: string): Promise<T | null> {
+    try {
+      const cached = await redis.get(key);
+      if (cached) {
+        logger.debug("Cache hit", { key });
+        return JSON.parse(cached) as T;
+      }
+      return null;
+    } catch (error) {
+      logger.warn("Cache read error", { key, error: (error as Error).message });
+      return null;
+    }
+  }
+
+  /**
+   * Set data in cache
+   */
+  private async setCache<T>(key: string, data: T, ttl: number): Promise<void> {
+    try {
+      await redis.setex(key, ttl, JSON.stringify(data));
+      logger.debug("Cache set", { key, ttl });
+    } catch (error) {
+      logger.warn("Cache write error", { key, error: (error as Error).message });
+    }
+  }
+
+  /**
+   * Invalidate cache by pattern for a user
+   */
+  private async invalidateUserCache(userId: string): Promise<void> {
+    try {
+      const keys = await redis.keys(CACHE_KEYS.userPattern(userId));
+      if (keys.length > 0) {
+        await redis.del(...keys);
+        logger.debug("Cache invalidated", { userId, keysCount: keys.length });
+      }
+    } catch (error) {
+      logger.warn("Cache invalidation error", { userId, error: (error as Error).message });
+    }
+  }
+
+  /**
    * Get all events for a user
    */
   async getAll(userId: string, filters?: PlannerFilters) {
     try {
+      // Only cache unfiltered results
+      const cacheKey = !filters || Object.keys(filters).length === 0 || Object.values(filters).every(v => v === undefined) 
+        ? CACHE_KEYS.list(userId) 
+        : null;
+
+      if (cacheKey) {
+        const cached = await this.getFromCache<Selectable<PlannerEvent>[]>(cacheKey);
+        if (cached) return cached;
+      }
+
       let query = db.selectFrom("planner").selectAll().where("user_id", "=", userId);
 
       if (filters?.personId) {
@@ -49,7 +121,13 @@ export class PlannerService {
         query = query.where("completed", "=", filters.completed);
       }
 
-      return await query.orderBy("date", "asc").execute();
+      const events = await query.orderBy("date", "asc").execute();
+
+      if (cacheKey) {
+        await this.setCache(cacheKey, events, CACHE_TTL.PLANNER_LIST);
+      }
+
+      return events;
     } catch (error) {
       logger.error("Failed to get planner events", error as Error, { userId, filters });
       throw new ServiceError("Failed to retrieve events", "DATABASE", 500);
@@ -78,7 +156,9 @@ export class PlannerService {
    */
   async create(data: PlannerEventInsert) {
     try {
-      return await db.insertInto("planner").values(data).returningAll().executeTakeFirst();
+      const event = await db.insertInto("planner").values(data).returningAll().executeTakeFirst();
+      await this.invalidateUserCache(data.user_id);
+      return event;
     } catch (error) {
       logger.error("Failed to create planner event", error as Error, { userId: data.user_id });
       throw new ServiceError("Failed to create event", "DATABASE", 500);
@@ -90,13 +170,18 @@ export class PlannerService {
    */
   async update(userId: string, eventId: string, data: PlannerEventUpdate) {
     try {
-      return await db
+      const event = await db
         .updateTable("planner")
         .set(data)
         .where("id", "=", eventId)
         .where("user_id", "=", userId)
         .returningAll()
         .executeTakeFirst();
+      
+      if (event) {
+        await this.invalidateUserCache(userId);
+      }
+      return event;
     } catch (error) {
       logger.error("Failed to update planner event", error as Error, { userId, eventId });
       throw new ServiceError("Failed to update event", "DATABASE", 500);
@@ -114,7 +199,11 @@ export class PlannerService {
         .where("user_id", "=", userId)
         .executeTakeFirst();
 
-      return result.numDeletedRows > 0;
+      const deleted = result.numDeletedRows > 0;
+      if (deleted) {
+        await this.invalidateUserCache(userId);
+      }
+      return deleted;
     } catch (error) {
       logger.error("Failed to delete planner event", error as Error, { userId, eventId });
       throw new ServiceError("Failed to delete event", "DATABASE", 500);
@@ -126,7 +215,7 @@ export class PlannerService {
    */
   async markCompleted(userId: string, eventId: string, completed: boolean = true) {
     try {
-      return await db
+      const event = await db
         .updateTable("planner")
         .set({
           completed,
@@ -136,6 +225,11 @@ export class PlannerService {
         .where("user_id", "=", userId)
         .returningAll()
         .executeTakeFirst();
+      
+      if (event) {
+        await this.invalidateUserCache(userId);
+      }
+      return event;
     } catch (error) {
       logger.error("Failed to mark planner event as completed", error as Error, { userId, eventId, completed });
       throw new ServiceError("Failed to update event completion status", "DATABASE", 500);
@@ -147,11 +241,15 @@ export class PlannerService {
    */
   async getUpcoming(userId: string, daysAhead: number = 7) {
     try {
+      const cacheKey = CACHE_KEYS.upcoming(userId, daysAhead);
+      const cached = await this.getFromCache<Selectable<PlannerEvent>[]>(cacheKey);
+      if (cached) return cached;
+
       const now = new Date();
       const endDate = new Date();
       endDate.setDate(endDate.getDate() + daysAhead);
 
-      return await db
+      const events = await db
         .selectFrom("planner")
         .selectAll()
         .where("user_id", "=", userId)
@@ -160,6 +258,9 @@ export class PlannerService {
         .where("completed", "=", false)
         .orderBy("date", "asc")
         .execute();
+
+      await this.setCache(cacheKey, events, CACHE_TTL.UPCOMING);
+      return events;
     } catch (error) {
       logger.error("Failed to get upcoming planner events", error as Error, { userId, daysAhead });
       throw new ServiceError("Failed to retrieve upcoming events", "DATABASE", 500);
@@ -171,9 +272,13 @@ export class PlannerService {
    */
   async getOverdue(userId: string) {
     try {
+      const cacheKey = CACHE_KEYS.overdue(userId);
+      const cached = await this.getFromCache<Selectable<PlannerEvent>[]>(cacheKey);
+      if (cached) return cached;
+
       const now = new Date();
 
-      return await db
+      const events = await db
         .selectFrom("planner")
         .selectAll()
         .where("user_id", "=", userId)
@@ -181,6 +286,9 @@ export class PlannerService {
         .where("completed", "=", false)
         .orderBy("date", "asc")
         .execute();
+
+      await this.setCache(cacheKey, events, CACHE_TTL.UPCOMING); // Reuse short TTL
+      return events;
     } catch (error) {
       logger.error("Failed to get overdue planner events", error as Error, { userId });
       throw new ServiceError("Failed to retrieve overdue events", "DATABASE", 500);

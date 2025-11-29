@@ -1,6 +1,23 @@
 import { db } from "../../libs/db/client";
-import type { WishlistItemInsert, WishlistItemUpdate, Priority } from "../../libs/db/schema";
+import type { WishlistItemInsert, WishlistItemUpdate, Priority, WishlistItem } from "../../libs/db/schema";
 import { logger } from "../../libs/logger";
+import { redis } from "../../libs/cache";
+import type { Selectable } from "kysely";
+
+/** Cache TTL in seconds */
+const CACHE_TTL = {
+  WISHLIST_LIST: 300, // 5 minutes
+  WISHLIST_GROUPED: 300, // 5 minutes
+  WISHLIST_HISTORY: 300, // 5 minutes
+} as const;
+
+/** Cache key patterns */
+const CACHE_KEYS = {
+  list: (userId: string) => `wishlist:list:${userId}`,
+  grouped: (userId: string) => `wishlist:grouped:${userId}`,
+  history: (userId: string) => `wishlist:history:${userId}`,
+  userPattern: (userId: string) => `wishlist:*:${userId}*`,
+} as const;
 
 export class ServiceError extends Error {
   constructor(
@@ -21,10 +38,64 @@ export interface WishlistFilters {
 
 export class WishlistService {
   /**
+   * Get cached data or fetch from source
+   */
+  private async getFromCache<T>(key: string): Promise<T | null> {
+    try {
+      const cached = await redis.get(key);
+      if (cached) {
+        logger.debug("Cache hit", { key });
+        return JSON.parse(cached) as T;
+      }
+      return null;
+    } catch (error) {
+      logger.warn("Cache read error", { key, error: (error as Error).message });
+      return null;
+    }
+  }
+
+  /**
+   * Set data in cache
+   */
+  private async setCache<T>(key: string, data: T, ttl: number): Promise<void> {
+    try {
+      await redis.setex(key, ttl, JSON.stringify(data));
+      logger.debug("Cache set", { key, ttl });
+    } catch (error) {
+      logger.warn("Cache write error", { key, error: (error as Error).message });
+    }
+  }
+
+  /**
+   * Invalidate cache by pattern for a user
+   */
+  private async invalidateUserCache(userId: string): Promise<void> {
+    try {
+      const keys = await redis.keys(CACHE_KEYS.userPattern(userId));
+      if (keys.length > 0) {
+        await redis.del(...keys);
+        logger.debug("Cache invalidated", { userId, keysCount: keys.length });
+      }
+    } catch (error) {
+      logger.warn("Cache invalidation error", { userId, error: (error as Error).message });
+    }
+  }
+
+  /**
    * Get all wishlist items for a user
    */
   async getAll(userId: string, filters?: WishlistFilters) {
     try {
+      // Only cache unfiltered results
+      const cacheKey = !filters || Object.keys(filters).length === 0 || Object.values(filters).every(v => v === undefined)
+        ? CACHE_KEYS.list(userId)
+        : null;
+
+      if (cacheKey) {
+        const cached = await this.getFromCache<Selectable<WishlistItem>[]>(cacheKey);
+        if (cached) return cached;
+      }
+
       let query = db.selectFrom("wishlist").selectAll().where("user_id", "=", userId);
 
       if (filters?.personId) {
@@ -39,7 +110,13 @@ export class WishlistService {
         query = query.where("purchased", "=", filters.purchased);
       }
 
-      return await query.orderBy("priority", "desc").orderBy("created_at", "desc").execute();
+      const items = await query.orderBy("priority", "desc").orderBy("created_at", "desc").execute();
+
+      if (cacheKey) {
+        await this.setCache(cacheKey, items, CACHE_TTL.WISHLIST_LIST);
+      }
+
+      return items;
     } catch (error) {
       logger.error("Failed to get wishlist items", error as Error, { userId, filters });
       throw new ServiceError("Failed to retrieve items", "DATABASE", 500);
@@ -68,7 +145,9 @@ export class WishlistService {
    */
   async create(data: WishlistItemInsert) {
     try {
-      return await db.insertInto("wishlist").values(data as any).returningAll().executeTakeFirst();
+      const item = await db.insertInto("wishlist").values(data as any).returningAll().executeTakeFirst();
+      await this.invalidateUserCache(data.user_id);
+      return item;
     } catch (error) {
       logger.error("Failed to create wishlist item", error as Error, { userId: data.user_id });
       throw new ServiceError("Failed to create item", "DATABASE", 500);
@@ -80,13 +159,18 @@ export class WishlistService {
    */
   async update(userId: string, itemId: string, data: WishlistItemUpdate) {
     try {
-      return await db
+      const item = await db
         .updateTable("wishlist")
         .set(data)
         .where("id", "=", itemId)
         .where("user_id", "=", userId)
         .returningAll()
         .executeTakeFirst();
+      
+      if (item) {
+        await this.invalidateUserCache(userId);
+      }
+      return item;
     } catch (error) {
       logger.error("Failed to update wishlist item", error as Error, { userId, itemId });
       throw new ServiceError("Failed to update item", "DATABASE", 500);
@@ -104,7 +188,11 @@ export class WishlistService {
         .where("user_id", "=", userId)
         .executeTakeFirst();
 
-      return result.numDeletedRows > 0;
+      const deleted = result.numDeletedRows > 0;
+      if (deleted) {
+        await this.invalidateUserCache(userId);
+      }
+      return deleted;
     } catch (error) {
       logger.error("Failed to delete wishlist item", error as Error, { userId, itemId });
       throw new ServiceError("Failed to delete item", "DATABASE", 500);
@@ -116,7 +204,7 @@ export class WishlistService {
    */
   async markPurchased(userId: string, itemId: string, purchased: boolean = true) {
     try {
-      return await db
+      const item = await db
         .updateTable("wishlist")
         .set({
           purchased,
@@ -126,6 +214,11 @@ export class WishlistService {
         .where("user_id", "=", userId)
         .returningAll()
         .executeTakeFirst();
+      
+      if (item) {
+        await this.invalidateUserCache(userId);
+      }
+      return item;
     } catch (error) {
       logger.error("Failed to mark wishlist item purchased", error as Error, { userId, itemId, purchased });
       throw new ServiceError("Failed to update purchase status", "DATABASE", 500);
@@ -137,6 +230,10 @@ export class WishlistService {
    */
   async getGroupedByPerson(userId: string) {
     try {
+      const cacheKey = CACHE_KEYS.grouped(userId);
+      const cached = await this.getFromCache<Record<string, Selectable<WishlistItem>[]>>(cacheKey);
+      if (cached) return cached;
+
       const items = await this.getAll(userId);
 
       const grouped: Record<string, typeof items> = {
@@ -154,6 +251,7 @@ export class WishlistService {
         }
       }
 
+      await this.setCache(cacheKey, grouped, CACHE_TTL.WISHLIST_GROUPED);
       return grouped;
     } catch (error) {
       logger.error("Failed to get grouped wishlist items", error as Error, { userId });
@@ -185,13 +283,20 @@ export class WishlistService {
    */
   async getPurchaseHistory(userId: string) {
     try {
-      return await db
+      const cacheKey = CACHE_KEYS.history(userId);
+      const cached = await this.getFromCache<Selectable<WishlistItem>[]>(cacheKey);
+      if (cached) return cached;
+
+      const items = await db
         .selectFrom("wishlist")
         .selectAll()
         .where("user_id", "=", userId)
         .where("purchased", "=", true)
         .orderBy("purchased_at", "desc")
         .execute();
+
+      await this.setCache(cacheKey, items, CACHE_TTL.WISHLIST_HISTORY);
+      return items;
     } catch (error) {
       logger.error("Failed to get purchase history", error as Error, { userId });
       throw new ServiceError("Failed to retrieve history", "DATABASE", 500);

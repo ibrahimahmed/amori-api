@@ -31,6 +31,12 @@ const mockLogger = {
   debug: () => {},
 };
 
+// Mock Redis
+const mockRedisGet = mock((): Promise<any> => Promise.resolve(null));
+const mockRedisSetex = mock((): Promise<any> => Promise.resolve("OK"));
+const mockRedisKeys = mock((): Promise<any> => Promise.resolve([]));
+const mockRedisDel = mock((): Promise<any> => Promise.resolve(1));
+
 // Setup module mocks
 mock.module("../../../src/libs/db/client", () => ({
   db: mockDbChain,
@@ -38,6 +44,15 @@ mock.module("../../../src/libs/db/client", () => ({
 
 mock.module("../../../src/libs/logger", () => ({
   logger: mockLogger,
+}));
+
+mock.module("../../../src/libs/cache", () => ({
+  redis: {
+    get: mockRedisGet,
+    setex: mockRedisSetex,
+    keys: mockRedisKeys,
+    del: mockRedisDel,
+  },
 }));
 
 // Import after mocks are set up
@@ -68,9 +83,17 @@ const mockEvent = {
 function resetMocks() {
   mockExecute.mockReset();
   mockExecuteTakeFirst.mockReset();
+  mockRedisGet.mockReset();
+  mockRedisSetex.mockReset();
+  mockRedisKeys.mockReset();
+  mockRedisDel.mockReset();
   // Set defaults
   mockExecute.mockImplementation(() => Promise.resolve([]));
   mockExecuteTakeFirst.mockImplementation(() => Promise.resolve(null));
+  mockRedisGet.mockImplementation(() => Promise.resolve(null));
+  mockRedisSetex.mockImplementation(() => Promise.resolve("OK"));
+  mockRedisKeys.mockImplementation(() => Promise.resolve([]));
+  mockRedisDel.mockImplementation(() => Promise.resolve(1));
 }
 
 describe("PlannerService", () => {
