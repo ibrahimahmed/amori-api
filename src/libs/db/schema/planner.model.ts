@@ -21,7 +21,7 @@ export interface PlannerEvent {
   reminder_at: Date | null; // When to send reminder
   location: string | null;
   notes: string | null;
-  completed: boolean;
+  completed: ColumnType<boolean, boolean | undefined, boolean>; // DEFAULT FALSE in DB
   completed_at: Date | null;
   created_at: ColumnType<Date, string | undefined, never>;
   updated_at: ColumnType<Date, string | undefined, string | undefined>;

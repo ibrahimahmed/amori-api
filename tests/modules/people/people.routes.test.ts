@@ -13,6 +13,7 @@ const mockPerson = {
   birthday: "1990-06-15",
   anniversary: "2020-02-14",
   notes: "Test notes",
+  person_notes: ["First note", "Second note"],
   avatar_url: null,
   phone: "+1234567890",
   email: "john@example.com",
@@ -418,6 +419,7 @@ describe("People Routes", () => {
       birthday: "1992-03-20",
       anniversary: "2021-06-15",
       email: "jane@example.com",
+      person_notes: ["Met at work", "Likes coffee"],
     };
 
     it("should create a person", async () => {
@@ -563,12 +565,65 @@ describe("People Routes", () => {
         expect(response.status).toBe(201);
       }
     });
+
+    it("should create person with person_notes array", async () => {
+      const personNotes = ["Note 1", "Note 2", "Note 3"];
+      mockPeopleService.create.mockImplementation(() =>
+        Promise.resolve({ ...mockPerson, person_notes: personNotes })
+      );
+
+      const response = await app.handle(
+        new Request("http://localhost/people", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "Test", relation_type: "friend", person_notes: personNotes }),
+        })
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.data.person_notes).toEqual(personNotes);
+    });
+
+    it("should create person with empty person_notes array", async () => {
+      mockPeopleService.create.mockImplementation(() =>
+        Promise.resolve({ ...mockPerson, person_notes: [] })
+      );
+
+      const response = await app.handle(
+        new Request("http://localhost/people", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "Test", relation_type: "friend", person_notes: [] }),
+        })
+      );
+
+      expect(response.status).toBe(201);
+    });
+
+    it("should create person without person_notes", async () => {
+      const { person_notes: _, ...personWithoutNotes } = mockPerson;
+      mockPeopleService.create.mockImplementation(() =>
+        Promise.resolve({ ...personWithoutNotes, person_notes: [] })
+      );
+
+      const response = await app.handle(
+        new Request("http://localhost/people", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "Test", relation_type: "friend" }),
+        })
+      );
+
+      expect(response.status).toBe(201);
+    });
   });
 
   describe("PATCH /people/:id", () => {
     const validUpdateBody = {
       name: "Updated Name",
       notes: "Updated notes",
+      person_notes: ["Updated note 1", "Updated note 2"],
     };
 
     it("should update a person", async () => {
@@ -696,6 +751,62 @@ describe("People Routes", () => {
       );
 
       expect(response.status).toBe(200);
+    });
+
+    it("should update person_notes array", async () => {
+      const newNotes = ["New note 1", "New note 2", "New note 3"];
+      mockPeopleService.update.mockImplementation(() =>
+        Promise.resolve({ ...mockPerson, person_notes: newNotes })
+      );
+
+      const response = await app.handle(
+        new Request(`http://localhost/people/${TEST_PERSON_ID}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ person_notes: newNotes }),
+        })
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data.person_notes).toEqual(newNotes);
+    });
+
+    it("should clear person_notes with empty array", async () => {
+      mockPeopleService.update.mockImplementation(() =>
+        Promise.resolve({ ...mockPerson, person_notes: [] })
+      );
+
+      const response = await app.handle(
+        new Request(`http://localhost/people/${TEST_PERSON_ID}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ person_notes: [] }),
+        })
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data.person_notes).toEqual([]);
+    });
+
+    it("should handle large person_notes array", async () => {
+      const manyNotes = Array(100).fill(null).map((_, i) => `Note ${i + 1}`);
+      mockPeopleService.update.mockImplementation(() =>
+        Promise.resolve({ ...mockPerson, person_notes: manyNotes })
+      );
+
+      const response = await app.handle(
+        new Request(`http://localhost/people/${TEST_PERSON_ID}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ person_notes: manyNotes }),
+        })
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data.person_notes).toHaveLength(100);
     });
   });
 

@@ -80,6 +80,7 @@ const mockPerson = {
   birthday: new Date("1990-06-15"),
   anniversary: new Date("2020-02-14"),
   notes: "Test notes",
+  person_notes: ["First note", "Second note"],
   avatar_url: null,
   phone: "+1234567890",
   email: "john@example.com",
@@ -265,6 +266,7 @@ describe("PeopleService", () => {
       birthday: new Date("1992-03-20"),
       anniversary: null,
       notes: null,
+      person_notes: null,
       avatar_url: null,
       phone: null,
       email: null,
@@ -290,6 +292,7 @@ describe("PeopleService", () => {
       const fullData = {
         ...createData,
         notes: "Some notes",
+        person_notes: ["Note 1", "Note 2"],
         avatar_url: "https://example.com/avatar.jpg",
         phone: "+1234567890",
         email: "jane@example.com",
@@ -299,6 +302,30 @@ describe("PeopleService", () => {
       const result = await service.create(fullData);
 
       expect(result).toBeDefined();
+    });
+
+    it("should create person with person_notes array", async () => {
+      const dataWithNotes = {
+        ...createData,
+        person_notes: ["First note", "Second note", "Third note"],
+      };
+      mockExecuteTakeFirst.mockImplementation(() => Promise.resolve({ ...mockPerson, ...dataWithNotes }));
+
+      const result = await service.create(dataWithNotes);
+
+      expect(result?.person_notes).toEqual(["First note", "Second note", "Third note"]);
+    });
+
+    it("should create person with empty person_notes array", async () => {
+      const dataWithEmptyNotes = {
+        ...createData,
+        person_notes: [],
+      };
+      mockExecuteTakeFirst.mockImplementation(() => Promise.resolve({ ...mockPerson, person_notes: [] }));
+
+      const result = await service.create(dataWithEmptyNotes);
+
+      expect(result?.person_notes).toEqual([]);
     });
   });
 
@@ -604,6 +631,35 @@ describe("PeopleService", () => {
       const result = await service.update(TEST_USER_ID, TEST_PERSON_ID, { notes: longNotes });
 
       expect(result?.notes?.length).toBe(10000);
+    });
+
+    it("should handle person_notes array updates", async () => {
+      const newNotes = ["Updated note 1", "Updated note 2"];
+      const personWithUpdatedNotes = { ...mockPerson, person_notes: newNotes };
+      mockExecuteTakeFirst.mockImplementation(() => Promise.resolve(personWithUpdatedNotes));
+
+      const result = await service.update(TEST_USER_ID, TEST_PERSON_ID, { person_notes: newNotes });
+
+      expect(result?.person_notes).toEqual(newNotes);
+    });
+
+    it("should handle large person_notes array", async () => {
+      const manyNotes = Array(100).fill(null).map((_, i) => `Note ${i + 1}`);
+      const personWithManyNotes = { ...mockPerson, person_notes: manyNotes };
+      mockExecuteTakeFirst.mockImplementation(() => Promise.resolve(personWithManyNotes));
+
+      const result = await service.update(TEST_USER_ID, TEST_PERSON_ID, { person_notes: manyNotes });
+
+      expect(result?.person_notes?.length).toBe(100);
+    });
+
+    it("should handle clearing person_notes with empty array", async () => {
+      const personWithEmptyNotes = { ...mockPerson, person_notes: [] };
+      mockExecuteTakeFirst.mockImplementation(() => Promise.resolve(personWithEmptyNotes));
+
+      const result = await service.update(TEST_USER_ID, TEST_PERSON_ID, { person_notes: [] });
+
+      expect(result?.person_notes).toEqual([]);
     });
 
     it("should handle all relation types", async () => {

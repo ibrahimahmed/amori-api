@@ -1,5 +1,17 @@
 import { db } from "../../libs/db/client";
 import type { PlannerEventInsert, PlannerEventUpdate, EventType } from "../../libs/db/schema";
+import { logger } from "../../libs/logger";
+
+export class ServiceError extends Error {
+  constructor(
+    message: string,
+    public code: "NOT_FOUND" | "VALIDATION" | "DATABASE" | "INTERNAL",
+    public statusCode: number = 500
+  ) {
+    super(message);
+    this.name = "ServiceError";
+  }
+}
 
 export interface PlannerFilters {
   personId?: string;
@@ -14,207 +26,266 @@ export class PlannerService {
    * Get all events for a user
    */
   async getAll(userId: string, filters?: PlannerFilters) {
-    let query = db.selectFrom("planner").selectAll().where("user_id", "=", userId);
+    try {
+      let query = db.selectFrom("planner").selectAll().where("user_id", "=", userId);
 
-    if (filters?.personId) {
-      query = query.where("person_id", "=", filters.personId);
+      if (filters?.personId) {
+        query = query.where("person_id", "=", filters.personId);
+      }
+
+      if (filters?.eventType) {
+        query = query.where("event_type", "=", filters.eventType);
+      }
+
+      if (filters?.startDate) {
+        query = query.where("date", ">=", filters.startDate);
+      }
+
+      if (filters?.endDate) {
+        query = query.where("date", "<=", filters.endDate);
+      }
+
+      if (filters?.completed !== undefined) {
+        query = query.where("completed", "=", filters.completed);
+      }
+
+      return await query.orderBy("date", "asc").execute();
+    } catch (error) {
+      logger.error("Failed to get planner events", error as Error, { userId, filters });
+      throw new ServiceError("Failed to retrieve events", "DATABASE", 500);
     }
-
-    if (filters?.eventType) {
-      query = query.where("event_type", "=", filters.eventType);
-    }
-
-    if (filters?.startDate) {
-      query = query.where("date", ">=", filters.startDate);
-    }
-
-    if (filters?.endDate) {
-      query = query.where("date", "<=", filters.endDate);
-    }
-
-    if (filters?.completed !== undefined) {
-      query = query.where("completed", "=", filters.completed);
-    }
-
-    return query.orderBy("date", "asc").execute();
   }
 
   /**
    * Get a single event by ID
    */
   async getById(userId: string, eventId: string) {
-    return db
-      .selectFrom("planner")
-      .selectAll()
-      .where("id", "=", eventId)
-      .where("user_id", "=", userId)
-      .executeTakeFirst();
+    try {
+      return await db
+        .selectFrom("planner")
+        .selectAll()
+        .where("id", "=", eventId)
+        .where("user_id", "=", userId)
+        .executeTakeFirst();
+    } catch (error) {
+      logger.error("Failed to get planner event by ID", error as Error, { userId, eventId });
+      throw new ServiceError("Failed to retrieve event", "DATABASE", 500);
+    }
   }
 
   /**
    * Create a new event
    */
   async create(data: PlannerEventInsert) {
-    return db.insertInto("planner").values(data).returningAll().executeTakeFirst();
+    try {
+      return await db.insertInto("planner").values(data).returningAll().executeTakeFirst();
+    } catch (error) {
+      logger.error("Failed to create planner event", error as Error, { userId: data.user_id });
+      throw new ServiceError("Failed to create event", "DATABASE", 500);
+    }
   }
 
   /**
    * Update an event
    */
   async update(userId: string, eventId: string, data: PlannerEventUpdate) {
-    return db
-      .updateTable("planner")
-      .set(data)
-      .where("id", "=", eventId)
-      .where("user_id", "=", userId)
-      .returningAll()
-      .executeTakeFirst();
+    try {
+      return await db
+        .updateTable("planner")
+        .set(data)
+        .where("id", "=", eventId)
+        .where("user_id", "=", userId)
+        .returningAll()
+        .executeTakeFirst();
+    } catch (error) {
+      logger.error("Failed to update planner event", error as Error, { userId, eventId });
+      throw new ServiceError("Failed to update event", "DATABASE", 500);
+    }
   }
 
   /**
    * Delete an event
    */
   async delete(userId: string, eventId: string) {
-    const result = await db
-      .deleteFrom("planner")
-      .where("id", "=", eventId)
-      .where("user_id", "=", userId)
-      .executeTakeFirst();
+    try {
+      const result = await db
+        .deleteFrom("planner")
+        .where("id", "=", eventId)
+        .where("user_id", "=", userId)
+        .executeTakeFirst();
 
-    return result.numDeletedRows > 0;
+      return result.numDeletedRows > 0;
+    } catch (error) {
+      logger.error("Failed to delete planner event", error as Error, { userId, eventId });
+      throw new ServiceError("Failed to delete event", "DATABASE", 500);
+    }
   }
 
   /**
    * Mark event as completed
    */
   async markCompleted(userId: string, eventId: string, completed: boolean = true) {
-    return db
-      .updateTable("planner")
-      .set({
-        completed,
-        completed_at: completed ? new Date() : null,
-      })
-      .where("id", "=", eventId)
-      .where("user_id", "=", userId)
-      .returningAll()
-      .executeTakeFirst();
+    try {
+      return await db
+        .updateTable("planner")
+        .set({
+          completed,
+          completed_at: completed ? new Date() : null,
+        })
+        .where("id", "=", eventId)
+        .where("user_id", "=", userId)
+        .returningAll()
+        .executeTakeFirst();
+    } catch (error) {
+      logger.error("Failed to mark planner event as completed", error as Error, { userId, eventId, completed });
+      throw new ServiceError("Failed to update event completion status", "DATABASE", 500);
+    }
   }
 
   /**
    * Get upcoming events
    */
   async getUpcoming(userId: string, daysAhead: number = 7) {
-    const now = new Date();
-    const endDate = new Date();
-    endDate.setDate(endDate.getDate() + daysAhead);
+    try {
+      const now = new Date();
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + daysAhead);
 
-    return db
-      .selectFrom("planner")
-      .selectAll()
-      .where("user_id", "=", userId)
-      .where("date", ">=", now)
-      .where("date", "<=", endDate)
-      .where("completed", "=", false)
-      .orderBy("date", "asc")
-      .execute();
+      return await db
+        .selectFrom("planner")
+        .selectAll()
+        .where("user_id", "=", userId)
+        .where("date", ">=", now)
+        .where("date", "<=", endDate)
+        .where("completed", "=", false)
+        .orderBy("date", "asc")
+        .execute();
+    } catch (error) {
+      logger.error("Failed to get upcoming planner events", error as Error, { userId, daysAhead });
+      throw new ServiceError("Failed to retrieve upcoming events", "DATABASE", 500);
+    }
   }
 
   /**
    * Get overdue events
    */
   async getOverdue(userId: string) {
-    const now = new Date();
+    try {
+      const now = new Date();
 
-    return db
-      .selectFrom("planner")
-      .selectAll()
-      .where("user_id", "=", userId)
-      .where("date", "<", now)
-      .where("completed", "=", false)
-      .orderBy("date", "asc")
-      .execute();
+      return await db
+        .selectFrom("planner")
+        .selectAll()
+        .where("user_id", "=", userId)
+        .where("date", "<", now)
+        .where("completed", "=", false)
+        .orderBy("date", "asc")
+        .execute();
+    } catch (error) {
+      logger.error("Failed to get overdue planner events", error as Error, { userId });
+      throw new ServiceError("Failed to retrieve overdue events", "DATABASE", 500);
+    }
   }
 
   /**
    * Get events for a specific date
    */
   async getByDate(userId: string, date: Date) {
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
+    try {
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
 
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
 
-    return db
-      .selectFrom("planner")
-      .selectAll()
-      .where("user_id", "=", userId)
-      .where("date", ">=", startOfDay)
-      .where("date", "<=", endOfDay)
-      .orderBy("date", "asc")
-      .execute();
+      return await db
+        .selectFrom("planner")
+        .selectAll()
+        .where("user_id", "=", userId)
+        .where("date", ">=", startOfDay)
+        .where("date", "<=", endOfDay)
+        .orderBy("date", "asc")
+        .execute();
+    } catch (error) {
+      logger.error("Failed to get planner events by date", error as Error, { userId, date });
+      throw new ServiceError("Failed to retrieve events for date", "DATABASE", 500);
+    }
   }
 
   /**
    * Get events for a month (calendar view)
    */
   async getByMonth(userId: string, year: number, month: number) {
-    const startOfMonth = new Date(year, month - 1, 1);
-    const endOfMonth = new Date(year, month, 0, 23, 59, 59, 999);
+    try {
+      const startOfMonth = new Date(year, month - 1, 1);
+      const endOfMonth = new Date(year, month, 0, 23, 59, 59, 999);
 
-    return db
-      .selectFrom("planner")
-      .selectAll()
-      .where("user_id", "=", userId)
-      .where("date", ">=", startOfMonth)
-      .where("date", "<=", endOfMonth)
-      .orderBy("date", "asc")
-      .execute();
+      return await db
+        .selectFrom("planner")
+        .selectAll()
+        .where("user_id", "=", userId)
+        .where("date", ">=", startOfMonth)
+        .where("date", "<=", endOfMonth)
+        .orderBy("date", "asc")
+        .execute();
+    } catch (error) {
+      logger.error("Failed to get planner events by month", error as Error, { userId, year, month });
+      throw new ServiceError("Failed to retrieve events for month", "DATABASE", 500);
+    }
   }
 
   /**
    * Get events that need reminders sent
    */
   async getEventsNeedingReminders() {
-    const now = new Date();
-    const buffer = new Date(now.getTime() + 5 * 60 * 1000); // 5 minute buffer
+    try {
+      const now = new Date();
+      const buffer = new Date(now.getTime() + 5 * 60 * 1000); // 5 minute buffer
 
-    return db
-      .selectFrom("planner")
-      .selectAll()
-      .where("reminder_at", "<=", buffer)
-      .where("reminder_at", ">=", now)
-      .where("completed", "=", false)
-      .execute();
+      return await db
+        .selectFrom("planner")
+        .selectAll()
+        .where("reminder_at", "<=", buffer)
+        .where("reminder_at", ">=", now)
+        .where("completed", "=", false)
+        .execute();
+    } catch (error) {
+      logger.error("Failed to get events needing reminders", error as Error);
+      throw new ServiceError("Failed to retrieve events needing reminders", "DATABASE", 500);
+    }
   }
 
   /**
    * Get statistics for a user
    */
   async getStats(userId: string) {
-    const events = await db
-      .selectFrom("planner")
-      .select(["completed", "event_type"])
-      .where("user_id", "=", userId)
-      .execute();
+    try {
+      const events = await db
+        .selectFrom("planner")
+        .select(["completed", "event_type"])
+        .where("user_id", "=", userId)
+        .execute();
 
-    const total = events.length;
-    const completed = events.filter((e) => e.completed).length;
-    const pending = total - completed;
+      const total = events.length;
+      const completed = events.filter((e) => e.completed).length;
+      const pending = total - completed;
 
-    const byType: Record<string, number> = {};
-    for (const event of events) {
-      byType[event.event_type] = (byType[event.event_type] || 0) + 1;
+      const byType: Record<string, number> = {};
+      for (const event of events) {
+        byType[event.event_type] = (byType[event.event_type] || 0) + 1;
+      }
+
+      return {
+        total,
+        completed,
+        pending,
+        byType,
+      };
+    } catch (error) {
+      logger.error("Failed to get planner stats", error as Error, { userId });
+      throw new ServiceError("Failed to retrieve statistics", "DATABASE", 500);
     }
-
-    return {
-      total,
-      completed,
-      pending,
-      byType,
-    };
   }
 }
 
 export const plannerService = new PlannerService();
-
