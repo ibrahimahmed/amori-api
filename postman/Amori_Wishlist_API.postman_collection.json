@@ -1,0 +1,240 @@
+{
+  "info": {
+    "name": "Amori Wishlist API",
+    "_postman_id": "amori-wishlist-collection-v1",
+    "description": "Wishlist/Gift management endpoints for Amori API. Manage gift ideas, track purchased items, and organize by person.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "wishlist_item_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "person_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Wishlist",
+      "item": [
+        {
+          "name": "Get All Items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/wishlist",
+              "host": ["{{base_url}}"],
+              "path": ["wishlist"],
+              "query": [
+                {
+                  "key": "person_id",
+                  "value": "{{person_id}}",
+                  "description": "Filter by person ID",
+                  "disabled": true
+                },
+                {
+                  "key": "priority",
+                  "value": "high",
+                  "description": "Filter by priority (low, medium, high)",
+                  "disabled": true
+                },
+                {
+                  "key": "purchased",
+                  "value": "false",
+                  "description": "Filter by purchase status (true, false)",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get all wishlist items with optional filters.\n\n**Optional Query Parameters:**\n- `person_id`: Filter by person ID\n- `priority`: Filter by priority (low, medium, high)\n- `purchased`: Filter by purchase status (true/false)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Grouped Items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/wishlist/grouped",
+              "host": ["{{base_url}}"],
+              "path": ["wishlist", "grouped"]
+            },
+            "description": "Get all wishlist items grouped by person ID. Items without a person are in 'unassigned'."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Purchase History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/wishlist/history",
+              "host": ["{{base_url}}"],
+              "path": ["wishlist", "history"]
+            },
+            "description": "Get all purchased items sorted by purchase date."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Item by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.data && response.data.id) {",
+                  "        pm.collectionVariables.set('wishlist_item_id', response.data.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/wishlist/{{wishlist_item_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["wishlist", "{{wishlist_item_id}}"]
+            },
+            "description": "Get a specific wishlist item by ID.\n\n**Path Parameters:**\n- `id`: Wishlist Item UUID"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.data && response.data.id) {",
+                  "        pm.collectionVariables.set('wishlist_item_id', response.data.id);",
+                  "        console.log('Wishlist Item ID saved:', response.data.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Vintage Watch\",\n  \"description\": \"Gold plated vintage watch from 1980s\",\n  \"price_range\": \"$200-300\",\n  \"url\": \"https://example.com/watch\",\n  \"priority\": \"high\",\n  \"person_id\": \"{{person_id}}\",\n  \"notes\": \"Check condition carefully\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/wishlist",
+              "host": ["{{base_url}}"],
+              "path": ["wishlist"]
+            },
+            "description": "Create a new wishlist item.\n\n**Required Fields:**\n- `title`: Item title\n\n**Optional Fields:**\n- `description`: Item description\n- `person_id`: Associated person ID\n- `price_range`: Estimated price range\n- `url`: Link to item\n- `image_url`: Link to image\n- `priority`: low, medium, high (default: medium)\n- `notes`: Additional notes"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Item",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price_range\": \"$150-250\",\n  \"priority\": \"medium\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/wishlist/{{wishlist_item_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["wishlist", "{{wishlist_item_id}}"]
+            },
+            "description": "Update a wishlist item.\n\n**Path Parameters:**\n- `id`: Wishlist Item UUID\n\n**Body:**\nAny of the fields from Create Item."
+          },
+          "response": []
+        },
+        {
+          "name": "Mark Purchased",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"purchased\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/wishlist/{{wishlist_item_id}}/purchase",
+              "host": ["{{base_url}}"],
+              "path": ["wishlist", "{{wishlist_item_id}}", "purchase"]
+            },
+            "description": "Mark an item as purchased or unpurchased.\n\n**Path Parameters:**\n- `id`: Wishlist Item UUID\n\n**Body:**\n- `purchased`: boolean (default true)"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Item",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/wishlist/{{wishlist_item_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["wishlist", "{{wishlist_item_id}}"]
+            },
+            "description": "Delete a wishlist item.\n\n**Path Parameters:**\n- `id`: Wishlist Item UUID"
+          },
+          "response": []
+        }
+      ],
+      "description": "Manage gift ideas and wishlist items."
+    }
+  ]
+}

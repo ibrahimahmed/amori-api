@@ -1,20 +1,44 @@
 import { Elysia, t } from "elysia";
 import { authMiddleware } from "../auth";
-import { wishlistService } from "./wishlist.service";
+import { wishlistService, ServiceError } from "./wishlist.service";
 import type { Priority } from "../../libs/db/schema";
+import { logger } from "../../libs/logger";
+import { generalRateLimit } from "../../middlewares/rateLimit";
+
+/**
+ * Handle service errors and return appropriate HTTP response
+ */
+function handleError(
+  error: unknown,
+  set: { status?: number | string },
+  context: { userId?: string; operation: string }
+): { success: false; error: string } {
+  if (error instanceof ServiceError) {
+    set.status = error.statusCode;
+    return { success: false, error: error.message };
+  }
+  logger.error(`Unexpected error in ${context.operation}`, error as Error, { userId: context.userId });
+  set.status = 500;
+  return { success: false, error: "Internal server error" };
+}
 
 export const wishlistRoutes = new Elysia({ prefix: "/wishlist" })
   .use(authMiddleware)
+  .use(generalRateLimit)
   // Get all wishlist items
   .get(
     "/",
-    async ({ user, query }) => {
-      const items = await wishlistService.getAll(user.id, {
-        personId: query.person_id,
-        priority: query.priority as Priority | undefined,
-        purchased: query.purchased !== undefined ? query.purchased === "true" : undefined,
-      });
-      return { success: true, data: items };
+    async ({ user, query, set }) => {
+      try {
+        const items = await wishlistService.getAll(user.id, {
+          personId: query.person_id,
+          priority: query.priority as Priority | undefined,
+          purchased: query.purchased !== undefined ? query.purchased === "true" : undefined,
+        });
+        return { success: true, data: items };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "wishlist.getAll" });
+      }
     },
     {
       query: t.Object({
@@ -33,9 +57,13 @@ export const wishlistRoutes = new Elysia({ prefix: "/wishlist" })
   // Get items grouped by person
   .get(
     "/grouped",
-    async ({ user }) => {
-      const grouped = await wishlistService.getGroupedByPerson(user.id);
-      return { success: true, data: grouped };
+    async ({ user, set }) => {
+      try {
+        const grouped = await wishlistService.getGroupedByPerson(user.id);
+        return { success: true, data: grouped };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "wishlist.getGroupedByPerson" });
+      }
     },
     {
       detail: {
@@ -49,9 +77,13 @@ export const wishlistRoutes = new Elysia({ prefix: "/wishlist" })
   // Get purchase history
   .get(
     "/history",
-    async ({ user }) => {
-      const items = await wishlistService.getPurchaseHistory(user.id);
-      return { success: true, data: items };
+    async ({ user, set }) => {
+      try {
+        const items = await wishlistService.getPurchaseHistory(user.id);
+        return { success: true, data: items };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "wishlist.getPurchaseHistory" });
+      }
     },
     {
       detail: {
@@ -66,12 +98,16 @@ export const wishlistRoutes = new Elysia({ prefix: "/wishlist" })
   .get(
     "/:id",
     async ({ user, params, set }) => {
-      const item = await wishlistService.getById(user.id, params.id);
-      if (!item) {
-        set.status = 404;
-        return { success: false, error: "Item not found" };
+      try {
+        const item = await wishlistService.getById(user.id, params.id);
+        if (!item) {
+          set.status = 404;
+          return { success: false, error: "Item not found" };
+        }
+        return { success: true, data: item };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "wishlist.getById" });
       }
-      return { success: true, data: item };
     },
     {
       params: t.Object({
@@ -88,19 +124,24 @@ export const wishlistRoutes = new Elysia({ prefix: "/wishlist" })
   // Create item
   .post(
     "/",
-    async ({ user, body }) => {
-      const item = await wishlistService.create({
-        user_id: user.id,
-        person_id: body.person_id,
-        title: body.title,
-        description: body.description,
-        price_range: body.price_range,
-        url: body.url,
-        image_url: body.image_url,
-        priority: (body.priority as Priority) || "medium",
-        notes: body.notes,
-      });
-      return { success: true, data: item };
+    async ({ user, body, set }) => {
+      try {
+        const item = await wishlistService.create({
+          user_id: user.id,
+          person_id: body.person_id,
+          title: body.title,
+          description: body.description,
+          price_range: body.price_range,
+          url: body.url,
+          image_url: body.image_url,
+          priority: (body.priority as Priority) || "medium",
+          notes: body.notes,
+        });
+        set.status = 201;
+        return { success: true, data: item };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "wishlist.create" });
+      }
     },
     {
       body: t.Object({
@@ -125,21 +166,25 @@ export const wishlistRoutes = new Elysia({ prefix: "/wishlist" })
   .patch(
     "/:id",
     async ({ user, params, body, set }) => {
-      const item = await wishlistService.update(user.id, params.id, {
-        person_id: body.person_id,
-        title: body.title,
-        description: body.description,
-        price_range: body.price_range,
-        url: body.url,
-        image_url: body.image_url,
-        priority: body.priority as Priority | undefined,
-        notes: body.notes,
-      });
-      if (!item) {
-        set.status = 404;
-        return { success: false, error: "Item not found" };
+      try {
+        const item = await wishlistService.update(user.id, params.id, {
+          person_id: body.person_id,
+          title: body.title,
+          description: body.description,
+          price_range: body.price_range,
+          url: body.url,
+          image_url: body.image_url,
+          priority: body.priority as Priority | undefined,
+          notes: body.notes,
+        });
+        if (!item) {
+          set.status = 404;
+          return { success: false, error: "Item not found" };
+        }
+        return { success: true, data: item };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "wishlist.update" });
       }
-      return { success: true, data: item };
     },
     {
       params: t.Object({
@@ -167,12 +212,16 @@ export const wishlistRoutes = new Elysia({ prefix: "/wishlist" })
   .post(
     "/:id/purchase",
     async ({ user, params, body, set }) => {
-      const item = await wishlistService.markPurchased(user.id, params.id, body.purchased ?? true);
-      if (!item) {
-        set.status = 404;
-        return { success: false, error: "Item not found" };
+      try {
+        const item = await wishlistService.markPurchased(user.id, params.id, body.purchased ?? true);
+        if (!item) {
+          set.status = 404;
+          return { success: false, error: "Item not found" };
+        }
+        return { success: true, data: item };
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "wishlist.markPurchased" });
       }
-      return { success: true, data: item };
     },
     {
       params: t.Object({
@@ -193,13 +242,17 @@ export const wishlistRoutes = new Elysia({ prefix: "/wishlist" })
   .delete(
     "/:id",
     async ({ user, params, set }) => {
-      const deleted = await wishlistService.delete(user.id, params.id);
-      if (!deleted) {
-        set.status = 404;
-        return { success: false, error: "Item not found" };
+      try {
+        const deleted = await wishlistService.delete(user.id, params.id);
+        if (!deleted) {
+          set.status = 404;
+          return { success: false, error: "Item not found" };
+        }
+        set.status = 204;
+        return null;
+      } catch (error) {
+        return handleError(error, set, { userId: user.id, operation: "wishlist.delete" });
       }
-      set.status = 204;
-      return null;
     },
     {
       params: t.Object({
