@@ -3,6 +3,7 @@ import { Person } from "./people.model";
 import { Memory } from "./memories.model";
 import { WishlistItem } from "./wishlist.model";
 import { PlannerEvent } from "./planner.model";
+import { Feedback } from "./feedback.model";
 
 export interface Database {
   users: User;
@@ -10,6 +11,7 @@ export interface Database {
   memories: Memory;
   wishlist: WishlistItem;
   planner: PlannerEvent;
+  feedback: Feedback;
 }
 
 // Re-export all types
@@ -18,3 +20,4 @@ export * from "./people.model";
 export * from "./memories.model";
 export * from "./wishlist.model";
 export * from "./planner.model";
+export * from "./feedback.model";

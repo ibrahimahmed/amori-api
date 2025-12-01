@@ -13,6 +13,7 @@ import { memoriesRoutes } from "./modules/memories";
 import { wishlistRoutes } from "./modules/wishlist";
 import { plannerRoutes } from "./modules/planner";
 import { aiRoutes } from "./modules/ai";
+import { feedbackRoutes } from "./modules/feedback";
 
 const app = new Elysia()
   .use(corsMiddleware)
@@ -37,6 +38,7 @@ const app = new Elysia()
           { name: "wishlist", description: "Wishlist/gift ideas management" },
           { name: "planner", description: "Event and reminder planning" },
           { name: "ai", description: "AI-powered suggestions and advice" },
+          { name: "feedback", description: "Bug reports, feedback, and feature requests" },
         ],
         components: {
           securitySchemes: {
@@ -59,6 +61,7 @@ const app = new Elysia()
   .use(wishlistRoutes)
   .use(plannerRoutes)
   .use(aiRoutes)
+  .use(feedbackRoutes)
   // Root endpoint
   .get("/", () => ({
     message: "Welcome to Amori API",

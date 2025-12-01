@@ -22,6 +22,9 @@ const envSchema = z.object({
 
   // Email (optional - for notifications)
   RESEND_API_KEY: z.string().optional(),
+
+  // Support email for feedback notifications
+  SUPPORT_EMAIL: z.string().email().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
