@@ -1,0 +1,400 @@
+{
+  "info": {
+    "name": "Amori Feedback API",
+    "_postman_id": "amori-feedback-collection-v1",
+    "description": "Feedback, bug reports, and feature request endpoints for Amori API. Submit feedback anonymously or as authenticated user, and manage feedback entries (admin).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "feedback_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Public",
+      "item": [
+        {
+          "name": "Submit Bug Report (Anonymous)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.data && response.data.id) {",
+                  "        pm.collectionVariables.set('feedback_id', response.data.id);",
+                  "        console.log('Feedback ID saved:', response.data.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"bug_report\",\n  \"subject\": \"App crashes on login\",\n  \"message\": \"The app crashes every time I try to login with my email. This started happening after the latest update.\",\n  \"contact_email\": \"user@example.com\",\n  \"priority\": \"high\",\n  \"device_info\": \"iPhone 15 Pro, iOS 17.1\",\n  \"app_version\": \"1.2.0\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/feedback",
+              "host": ["{{base_url}}"],
+              "path": ["feedback"]
+            },
+            "description": "Submit a bug report anonymously (no authentication required).\n\n**Required Fields:**\n- `type`: bug_report, feedback, or feature_request\n- `subject`: Brief subject (max 200 chars)\n- `message`: Detailed description (min 10, max 5000 chars)\n\n**Optional Fields:**\n- `contact_email`: Email for follow-up\n- `priority`: low, medium, high, critical\n- `screenshot_url`: Link to screenshot\n- `device_info`: Device/browser info\n- `app_version`: App version"
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Feature Request (Anonymous)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.data && response.data.id) {",
+                  "        pm.collectionVariables.set('feedback_id', response.data.id);",
+                  "        console.log('Feedback ID saved:', response.data.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"feature_request\",\n  \"subject\": \"Add dark mode\",\n  \"message\": \"It would be great to have a dark mode option in the app. This would help reduce eye strain when using the app at night and also save battery on OLED screens.\",\n  \"contact_email\": \"user@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/feedback",
+              "host": ["{{base_url}}"],
+              "path": ["feedback"]
+            },
+            "description": "Submit a feature request anonymously (no authentication required).\n\n**Feedback Types:**\n- `bug_report`: Report a bug or issue\n- `feedback`: General feedback\n- `feature_request`: Request a new feature"
+          },
+          "response": []
+        },
+        {
+          "name": "Submit General Feedback (Anonymous)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.data && response.data.id) {",
+                  "        pm.collectionVariables.set('feedback_id', response.data.id);",
+                  "        console.log('Feedback ID saved:', response.data.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"feedback\",\n  \"subject\": \"Great app!\",\n  \"message\": \"I just wanted to say that I really love using this app! It has helped me stay organized and remember important dates. Keep up the great work!\",\n  \"user_name\": \"Happy Customer\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/feedback",
+              "host": ["{{base_url}}"],
+              "path": ["feedback"]
+            },
+            "description": "Submit general feedback anonymously (no authentication required).\n\n**Optional Fields:**\n- `user_name`: Display name (for anonymous users)"
+          },
+          "response": []
+        }
+      ],
+      "description": "Public endpoints for submitting feedback without authentication."
+    },
+    {
+      "name": "User (Authenticated)",
+      "item": [
+        {
+          "name": "Submit Feedback (Authenticated)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.data && response.data.id) {",
+                  "        pm.collectionVariables.set('feedback_id', response.data.id);",
+                  "        console.log('Feedback ID saved:', response.data.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"bug_report\",\n  \"subject\": \"Cannot upload profile photo\",\n  \"message\": \"When I try to upload a profile photo, the upload progress bar gets stuck at 50% and never completes. I've tried multiple times with different images.\",\n  \"priority\": \"medium\",\n  \"device_info\": \"Chrome 120 on macOS Sonoma\",\n  \"app_version\": \"1.2.0\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/feedback/submit",
+              "host": ["{{base_url}}"],
+              "path": ["feedback", "submit"]
+            },
+            "description": "Submit feedback as an authenticated user. User info is automatically attached.\n\n**Required Fields:**\n- `type`: bug_report, feedback, or feature_request\n- `subject`: Brief subject (max 200 chars)\n- `message`: Detailed description (min 10, max 5000 chars)\n\n**Optional Fields:**\n- `contact_email`: Email for follow-up (defaults to user's email)\n- `priority`: low, medium, high, critical\n- `screenshot_url`: Link to screenshot\n- `device_info`: Device/browser info\n- `app_version`: App version"
+          },
+          "response": []
+        },
+        {
+          "name": "Get My Feedback",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/feedback/my",
+              "host": ["{{base_url}}"],
+              "path": ["feedback", "my"]
+            },
+            "description": "Get all feedback submissions made by the current authenticated user."
+          },
+          "response": []
+        }
+      ],
+      "description": "Authenticated user endpoints for submitting and viewing own feedback."
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Get All Feedback",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/feedback/admin/all",
+              "host": ["{{base_url}}"],
+              "path": ["feedback", "admin", "all"],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "bug_report",
+                  "description": "Filter by type (bug_report, feedback, feature_request)",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "open",
+                  "description": "Filter by status (open, in_progress, resolved, closed)",
+                  "disabled": true
+                },
+                {
+                  "key": "priority",
+                  "value": "high",
+                  "description": "Filter by priority (low, medium, high, critical)",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get all feedback entries with optional filters.\n\n**Optional Query Parameters:**\n- `type`: Filter by type (bug_report, feedback, feature_request)\n- `status`: Filter by status (open, in_progress, resolved, closed)\n- `priority`: Filter by priority (low, medium, high, critical)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Feedback Statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/feedback/admin/stats",
+              "host": ["{{base_url}}"],
+              "path": ["feedback", "admin", "stats"]
+            },
+            "description": "Get aggregated feedback statistics.\n\n**Response includes:**\n- `total`: Total feedback count\n- `byType`: Count by type (bug_report, feedback, feature_request)\n- `byStatus`: Count by status (open, in_progress, resolved, closed)\n- `byPriority`: Count by priority (low, medium, high, critical)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Feedback by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.data && response.data.id) {",
+                  "        pm.collectionVariables.set('feedback_id', response.data.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/feedback/admin/{{feedback_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["feedback", "admin", "{{feedback_id}}"]
+            },
+            "description": "Get a specific feedback entry by ID.\n\n**Path Parameters:**\n- `id`: Feedback UUID"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Feedback Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in_progress\",\n  \"admin_notes\": \"Investigating this issue. Will reach out to user for more details.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/feedback/admin/{{feedback_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["feedback", "admin", "{{feedback_id}}"]
+            },
+            "description": "Update feedback status, priority, or add admin notes.\n\n**Path Parameters:**\n- `id`: Feedback UUID\n\n**Optional Body Fields:**\n- `status`: open, in_progress, resolved, closed\n- `priority`: low, medium, high, critical\n- `admin_notes`: Internal notes for support team (max 2000 chars)"
+          },
+          "response": []
+        },
+        {
+          "name": "Mark as Resolved",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\",\n  \"admin_notes\": \"Fixed in version 1.2.1. Notified user via email.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/feedback/admin/{{feedback_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["feedback", "admin", "{{feedback_id}}"]
+            },
+            "description": "Mark a feedback entry as resolved. The `resolved_at` timestamp is automatically set."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Priority",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priority\": \"critical\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/feedback/admin/{{feedback_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["feedback", "admin", "{{feedback_id}}"]
+            },
+            "description": "Update feedback priority.\n\n**Priority Levels:**\n- `low`: Nice to have, no urgency\n- `medium`: Should be addressed (default)\n- `high`: Important, affects user experience\n- `critical`: Urgent, system-breaking issue"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Feedback",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/feedback/admin/{{feedback_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["feedback", "admin", "{{feedback_id}}"]
+            },
+            "description": "Delete a feedback entry.\n\n**Path Parameters:**\n- `id`: Feedback UUID\n\n**Returns:** 204 No Content on success"
+          },
+          "response": []
+        }
+      ],
+      "description": "Admin endpoints for managing all feedback entries."
+    }
+  ]
+}
+
