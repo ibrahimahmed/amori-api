@@ -252,8 +252,8 @@ describe("FeedbackService", () => {
       const createdFeedback = {
         ...mockFeedback,
         ...createBugReport,
-        priority: "high",
-        status: "open",
+        priority: "high" as const,
+        status: "open" as const,
       };
       mockExecuteTakeFirst.mockImplementation(() => Promise.resolve(createdFeedback));
 
@@ -267,8 +267,8 @@ describe("FeedbackService", () => {
       const createdFeedback = {
         ...mockFeatureRequest,
         ...createFeatureRequest,
-        priority: "medium",
-        status: "open",
+        priority: "medium" as const,
+        status: "open" as const,
       };
       mockExecuteTakeFirst.mockImplementation(() => Promise.resolve(createdFeedback));
 
@@ -476,4 +476,3 @@ describe("ServiceError", () => {
     expect(error.statusCode).toBe(500);
   });
 });
-

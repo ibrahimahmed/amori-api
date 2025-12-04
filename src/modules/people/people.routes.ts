@@ -266,3 +266,4 @@ const writeRoutes = new Elysia()
 export const peopleRoutes = new Elysia({ prefix: "/people" })
   .use(readRoutes)
   .use(writeRoutes);
+
