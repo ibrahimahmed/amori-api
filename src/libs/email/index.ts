@@ -1,5 +1,6 @@
 import { env } from "../../config/env";
 import { Resend } from "resend";
+import { logger } from "../logger";
 
 export interface EmailOptions {
   to: string;
@@ -22,7 +23,7 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
   }
 
   const { data, error } = await resend.emails.send({
-    from: options.from || "Amori <noreply@amori.app>",
+    from: "Amori <noreply@amori.info>",
     to: options.to,
     subject: options.subject,
     text: options.text || "",
@@ -30,6 +31,7 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
   });
 
   if (error) {
+    logger.error("Failed to send email", error, { email: options.to });
     throw new Error(`Failed to send email: ${error.message}`);
   }
 

@@ -275,6 +275,17 @@ const oauthRoutes = new Elysia()
     }
   );
 
+// OTP constants
+const OTP_TTL = 600; // 10 minutes
+const getOtpKey = (email: string): string => `otp:password_reset:${email}`;
+
+/**
+ * Generate a 6-digit OTP
+ */
+function generateOtp(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
 // Password reset request routes (rate limited: 3 per hour per IP)
 const forgotPasswordRoutes = new Elysia()
   .use(passwordResetRateLimit)
@@ -282,41 +293,95 @@ const forgotPasswordRoutes = new Elysia()
     "/forgot-password",
     async ({ body, set }) => {
       try {
-        // Use Supabase Auth built-in password reset
-        const { error } = await supabaseAnon.auth.resetPasswordForEmail(body.email, {
-          redirectTo: body.redirectTo,
-        });
-        if (error) {
-          logger.error("Failed to send password reset email", error, { email: body.email });
-          set.status = 500;
+        // Check if email service is enabled
+        if (!isEmailEnabled()) {
+          set.status = 503;
           return {
             success: false,
-            error: "Failed to send reset email. Please try again later.",
+            error: "Email service is not configured. Please contact support.",
           };
         }
+        // Check if user exists in database
+        const user = await db
+          .selectFrom("users")
+          .select(["id", "email", "name"])
+          .where("email", "=", body.email)
+          .executeTakeFirst();
         // Always return success to prevent email enumeration
+        if (!user) {
+          return {
+            success: true,
+            message: "If an account exists with this email, you will receive a password reset code.",
+          };
+        }
+        // Generate OTP and store in Redis
+        const otp = generateOtp();
+        const otpKey = getOtpKey(user.email);
+        await redis.setex(otpKey, OTP_TTL, otp);
+        // Send OTP via email
+        await sendEmail({
+          to: user.email,
+          subject: "Reset Your Amori Password",
+          html: `
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <style>
+                  body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                  .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                  .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+                  .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+                  .otp-box { background: white; border: 2px dashed #667eea; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0; }
+                  .otp-code { font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #667eea; }
+                  .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #666; }
+                </style>
+              </head>
+              <body>
+                <div class="container">
+                  <div class="header">
+                    <h1>🩷 Amori</h1>
+                    <p>Password Reset Request</p>
+                  </div>
+                  <div class="content">
+                    <p>Hi ${user.name || "there"},</p>
+                    <p>We received a request to reset your password. Use the code below:</p>
+                    <div class="otp-box">
+                      <div class="otp-code">${otp}</div>
+                    </div>
+                    <p><strong>This code will expire in 10 minutes.</strong></p>
+                    <p>If you didn't request this, please ignore this email.</p>
+                    <div class="footer">
+                      <p>This is an automated message from Amori. Please do not reply.</p>
+                    </div>
+                  </div>
+                </div>
+              </body>
+            </html>
+          `,
+          text: `Hi ${user.name || "there"},\n\nYour password reset code is: ${otp}\n\nThis code will expire in 10 minutes.\n\nIf you didn't request this, please ignore this email.`,
+        });
+        logger.info("Password reset OTP sent", { email: user.email });
         return {
           success: true,
-          message: "If an account exists with this email, you will receive a password reset link.",
+          message: "If an account exists with this email, you will receive a password reset code.",
         };
       } catch (error) {
         logger.error("Password reset request failed", error as Error, { email: body.email });
         set.status = 500;
         return {
           success: false,
-          error: "Failed to process reset request. Please try again later.",
+          error: "Failed to send reset code. Please try again later.",
         };
       }
     },
     {
       body: t.Object({
         email: t.String({ format: "email" }),
-        redirectTo: t.Optional(t.String({ description: "URL to redirect after password reset" })),
       }),
       detail: {
         tags: ["auth"],
         summary: "Request password reset",
-        description: "Send a password reset link to the user's email using Supabase Auth. Rate limited: 3 requests per hour per IP.",
+        description: "Send a 6-digit OTP to the user's email for password reset. Rate limited: 3 requests per hour per IP.",
       },
     }
   );
@@ -328,31 +393,52 @@ const resetPasswordRoutes = new Elysia()
     "/reset-password",
     async ({ body, set }) => {
       try {
-        // Verify the recovery token and update password
-        const { data, error: sessionError } = await supabaseAnon.auth.verifyOtp({
-          token_hash: body.token,
-          type: "recovery",
-        });
-        if (sessionError || !data.user) {
+        // Get OTP from Redis
+        const otpKey = getOtpKey(body.email);
+        const storedOtp = await redis.get(otpKey);
+        if (!storedOtp) {
           set.status = 400;
           return {
             success: false,
-            error: "Invalid or expired reset token. Please request a new one.",
+            error: "Invalid or expired reset code. Please request a new one.",
           };
         }
-        // Update password using admin API
-        const { error: updateError } = await supabase.auth.admin.updateUserById(data.user.id, {
+        // Verify OTP
+        if (storedOtp !== body.otp) {
+          set.status = 400;
+          return {
+            success: false,
+            error: "Invalid reset code. Please check and try again.",
+          };
+        }
+        // Get user from database
+        const user = await db
+          .selectFrom("users")
+          .select(["id", "email"])
+          .where("email", "=", body.email)
+          .executeTakeFirst();
+        if (!user) {
+          set.status = 404;
+          return {
+            success: false,
+            error: "User not found.",
+          };
+        }
+        // Update password using Supabase admin API
+        const { error: updateError } = await supabase.auth.admin.updateUserById(user.id, {
           password: body.new_password,
         });
         if (updateError) {
-          logger.error("Failed to update password", updateError, { userId: data.user.id });
+          logger.error("Failed to update password", updateError, { userId: user.id });
           set.status = 500;
           return {
             success: false,
             error: "Failed to reset password. Please try again.",
           };
         }
-        logger.info("Password reset successfully", { userId: data.user.id });
+        // Delete used OTP
+        await redis.del(otpKey);
+        logger.info("Password reset successfully", { userId: user.id });
         return {
           success: true,
           message: "Password reset successfully. You can now sign in with your new password.",
@@ -368,13 +454,14 @@ const resetPasswordRoutes = new Elysia()
     },
     {
       body: t.Object({
-        token: t.String({ description: "Recovery token from the password reset email link" }),
+        email: t.String({ format: "email" }),
+        otp: t.String({ minLength: 6, maxLength: 6, description: "6-digit OTP from email" }),
         new_password: t.String({ minLength: 6 }),
       }),
       detail: {
         tags: ["auth"],
-        summary: "Reset password with token",
-        description: "Verify the recovery token from email and set a new password. Rate limited: 5 attempts per 15 minutes per IP.",
+        summary: "Reset password with OTP",
+        description: "Verify the OTP and set a new password. Rate limited: 5 attempts per 15 minutes per IP.",
       },
     }
   );
