@@ -18,8 +18,7 @@ export interface Person {
   relation_type: RelationType;
   birthday: Date | null;
   anniversary: Date | null;
-  notes: string | null;
-  person_notes: string[] | null; // Array of notes for the person
+  notes: string[] | null; // Array of notes for AI context
   avatar_url: string | null;
   phone: string | null;
   email: string | null;
@@ -34,8 +33,7 @@ export interface PersonInsert {
   relation_type: RelationType;
   birthday?: Date | null;
   anniversary?: Date | null;
-  notes?: string | null;
-  person_notes?: string[] | null;
+  notes?: string[] | null;
   avatar_url?: string | null;
   phone?: string | null;
   email?: string | null;
@@ -46,8 +44,7 @@ export interface PersonUpdate {
   relation_type?: RelationType;
   birthday?: Date | null;
   anniversary?: Date | null;
-  notes?: string | null;
-  person_notes?: string[] | null;
+  notes?: string[] | null;
   avatar_url?: string | null;
   phone?: string | null;
   email?: string | null;

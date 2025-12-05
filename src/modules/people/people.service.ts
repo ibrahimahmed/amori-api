@@ -37,7 +37,7 @@ export interface PersonProfile {
   upcomingPlans: Selectable<PlannerEvent>[];
   wishlist: Selectable<WishlistItem>[];
   daysUntilBirthday: number | null;
-  daysUntilAnniversary: { days: number; years: number } | null;
+  daysTogether: { days: number; years: number } | null;
 }
 
 export interface UpcomingBirthday {
@@ -336,6 +336,17 @@ export class PeopleService {
   }
 
   /**
+   * Calculate total days together since a date
+   */
+  private calculateDaysTogether(startDate: Date, today: Date): { days: number; years: number } {
+    const start = new Date(startDate);
+    const totalDays = Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    const years = today.getFullYear() - start.getFullYear() - 
+      (today < new Date(today.getFullYear(), start.getMonth(), start.getDate()) ? 1 : 0);
+    return { days: Math.max(0, totalDays), years: Math.max(0, years) };
+  }
+
+  /**
    * Get full profile of a person including memories, upcoming plans, and wishlist (cached)
    * Uses single query with JSON aggregation for optimal performance
    */
@@ -377,11 +388,8 @@ export class PeopleService {
       }
       const person = data.person;
       const daysUntilBirthday = person.birthday ? this.calculateDaysUntil(new Date(person.birthday), now) : null;
-      const daysUntilAnniversary = person.anniversary
-        ? {
-            days: this.calculateDaysUntil(new Date(person.anniversary), now),
-            years: this.calculateYears(new Date(person.anniversary), now),
-          }
+      const daysTogether = person.anniversary
+        ? this.calculateDaysTogether(new Date(person.anniversary), now)
         : null;
       const profile: PersonProfile = {
         person,
@@ -389,7 +397,7 @@ export class PeopleService {
         upcomingPlans: data.upcoming_plans,
         wishlist: data.wishlist,
         daysUntilBirthday,
-        daysUntilAnniversary,
+        daysTogether,
       };
       await this.setCache(cacheKey, profile, CACHE_TTL.PERSON_PROFILE);
       logger.debug("Fetched person profile from DB", { userId });

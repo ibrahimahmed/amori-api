@@ -139,8 +139,7 @@ const writeRoutes = new Elysia()
           relation_type: body.relation_type as RelationType,
           birthday: body.birthday ? new Date(body.birthday) : null,
           anniversary: body.anniversary ? new Date(body.anniversary) : null,
-          notes: body.notes,
-          person_notes: body.person_notes ?? null,
+          notes: body.notes ?? null,
           avatar_url: body.avatar_url,
           phone: body.phone,
           email: body.email,
@@ -157,8 +156,7 @@ const writeRoutes = new Elysia()
         relation_type: t.String({ error: "Relation type is required" }),
         birthday: t.Optional(t.String()),
         anniversary: t.Optional(t.String()),
-        notes: t.Optional(t.String()),
-        person_notes: t.Optional(t.Array(t.String())),
+        notes: t.Optional(t.Array(t.String(), { description: "Array of notes for AI context" })),
         avatar_url: t.Optional(t.String()),
         phone: t.Optional(t.String()),
         email: t.Optional(t.String({ format: "email", error: "Invalid email format" })),
@@ -194,7 +192,6 @@ const writeRoutes = new Elysia()
           birthday: body.birthday ? new Date(body.birthday) : undefined,
           anniversary: body.anniversary ? new Date(body.anniversary) : undefined,
           notes: body.notes,
-          person_notes: body.person_notes,
           avatar_url: body.avatar_url,
           phone: body.phone,
           email: body.email,
@@ -217,8 +214,7 @@ const writeRoutes = new Elysia()
         relation_type: t.Optional(t.String()),
         birthday: t.Optional(t.String()),
         anniversary: t.Optional(t.String()),
-        notes: t.Optional(t.String()),
-        person_notes: t.Optional(t.Array(t.String())),
+        notes: t.Optional(t.Array(t.String(), { description: "Array of notes for AI context" })),
         avatar_url: t.Optional(t.String()),
         phone: t.Optional(t.String()),
         email: t.Optional(t.String({ format: "email", error: "Invalid email format" })),
@@ -242,7 +238,10 @@ const writeRoutes = new Elysia()
           return { success: false, error: "Person not found" };
         }
         set.status = 204;
-        return null;
+        return {
+          success: true,
+          message: "Person deleted successfully"
+        };
       } catch (error) {
         return handleError(error, set, { userId: user.id, operation: "delete" });
       }
